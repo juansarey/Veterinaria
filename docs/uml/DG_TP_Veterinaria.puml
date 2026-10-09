@@ -91,7 +91,8 @@ package "Dominio clínico" {
 
         + registrar_atencion(atencion : Atencion)
         + obtener_turnos() : List<Turno>
-        + obtener_agenda() : List<AgendaMedica>
+        + obtener_agenda() : AgendaMedica
+        + asignar_agenda(agenda : AgendaMedica)
         + puede_agendar(turno : Turno) : bool
         + agregar_turno(turno : Turno)
     }
@@ -131,13 +132,11 @@ package "Dominio clínico" {
 
 
     class AgendaMedica {
-        - id_agenda : int
-        - dia : DiaSemana
+        - dias_trabajo : Set<DiaSemana>
         - hora_desde : time
         - hora_hasta : time
 
         + contiene(turno : Turno) : bool
-        + se_superpone_con(otra : AgendaMedica) : bool
     }
 
 
@@ -417,9 +416,9 @@ Atencion --> TipoAtencion : tipo
 
 Clinica "1" -- "0..*" Veterinario : tiene >
 
-Veterinario "1" -- "0..*" AgendaMedica : dispone de >
+Veterinario "1" --> "0..1" AgendaMedica : dispone de >
 
-AgendaMedica --> DiaSemana : dia
+AgendaMedica --> DiaSemana : dias de trabajo
 
 Veterinario "1" -- "0..*" Turno : posee >
 
@@ -522,7 +521,7 @@ GeneradorReportes --> EstrategiaReporte : utiliza >
 note right of Veterinario
 Un turno sólo puede registrarse
 si se encuentra dentro de una
-franja de AgendaMedica.
+AgendaMedica.
 
 Además, un veterinario no puede
 tener turnos activos superpuestos.
@@ -530,8 +529,9 @@ end note
 
 
 note right of AgendaMedica
-Las franjas horarias de un mismo
-veterinario no deben superponerse.
+Representa el horario habitual
+de atención para los días
+de trabajo seleccionados.
 
 hora_hasta debe ser mayor
 que hora_desde.

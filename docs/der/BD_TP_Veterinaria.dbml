@@ -68,6 +68,16 @@ Enum estado_turno {
   CANCELADO
 }
 
+Enum dia_semana {
+  LUNES
+  MARTES
+  MIERCOLES
+  JUEVES
+  VIERNES
+  SABADO
+  DOMINGO
+}
+
 Table turno {
   id_turno int [pk, increment]
 
@@ -268,14 +278,17 @@ Table clinica {
 Table agenda_medica {
   id_agenda int [pk, increment]
 
-  id_veterinario int [not null, ref: > veterinario.id_veterinario]
-
-  dia dia_semana [not null]
+  id_veterinario int [not null, unique, ref: - veterinario.id_veterinario]
 
   hora_desde time [not null]
   hora_hasta time [not null]
+}
+
+Table agenda_medica_dia {
+  id_agenda int [not null, ref: > agenda_medica.id_agenda]
+  dia dia_semana [not null]
 
   indexes {
-    (id_veterinario, dia, hora_desde, hora_hasta) [unique]
+    (id_agenda, dia) [pk]
   }
 }
