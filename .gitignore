@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno
+.env
+.env.*
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archivos de IDE
+.vscode/
+.idea/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos temporales
+*.tmp
+*.log
+
+# Base de datos local
+*.db
+*.sqlite
+*.sqlite3
+
+# Distribución / build
+build/
+dist/
+*.egg-info/
+
+# Jupyter, por si se usa
+.ipynb_checkpoints/
+
+# Python tooling
+.mypy_cache/
+.ruff_cache/
+
+# Archivos de backup
+*.bak
+*~

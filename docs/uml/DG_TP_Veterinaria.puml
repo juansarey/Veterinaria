@@ -1,0 +1,577 @@
+@startuml VeterinariaUML
+
+title Sistema Veterinaria - Diagrama de Clases UML
+
+left to right direction
+
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+
+
+' ============================================================
+' DOMINIO CLINICO
+' ============================================================
+
+package "Dominio clínico" {
+
+    class Cliente {
+        - id_cliente : int
+        - nombre : str
+        - apellido : str
+        - dni : str
+        - telefono : str
+        - email : str
+
+        + agregar_mascota(mascota : Mascota)
+        + obtener_mascotas() : List<Mascota>
+    }
+
+
+    class Mascota {
+        - id_mascota : int
+        - nombre : str
+        - especie : str
+        - raza : str
+        - fecha_nacimiento : date
+        - sexo : str
+
+        + obtener_historia_clinica() : HistoriaClinica
+        + obtener_vacunas_pendientes() : List<Vacuna>
+        + vacunas_obligatorias_al_dia() : bool
+    }
+
+
+    class HistoriaClinica {
+        - id_historia : int
+        - fecha_apertura : date
+        - observaciones : str
+
+        + agregar_atencion(atencion : Atencion)
+        + obtener_atenciones() : List<Atencion>
+    }
+
+
+    class Atencion {
+        - id_atencion : int
+        - fecha_hora : datetime
+        - tipo : TipoAtencion
+        - motivo : str
+        - diagnostico : str
+        - observaciones : str
+
+        + registrar_diagnostico(diagnostico : str)
+    }
+
+
+    enum TipoAtencion {
+        CONSULTA
+        CONTROL
+        URGENCIA
+    }
+
+
+    class Clinica {
+        - id_clinica : int
+        - nombre : str
+        - direccion : str
+        - telefono : str
+
+        + agregar_veterinario(veterinario : Veterinario)
+        + obtener_veterinarios() : List<Veterinario>
+    }
+
+
+    class Veterinario {
+        - id_veterinario : int
+        - nombre : str
+        - apellido : str
+        - matricula : str
+        - especialidad : str
+
+        + registrar_atencion(atencion : Atencion)
+        + obtener_turnos() : List<Turno>
+        + obtener_agenda() : List<AgendaMedica>
+        + puede_agendar(turno : Turno) : bool
+        + agregar_turno(turno : Turno)
+    }
+
+
+    class Turno {
+        - id_turno : int
+        - fecha_hora_inicio : datetime
+        - fecha_hora_fin : datetime
+        - estado : EstadoTurno
+        - motivo : str
+
+        + cancelar()
+        + confirmar()
+        + marcar_atendido()
+        + se_superpone_con(otro : Turno) : bool
+    }
+
+
+    enum EstadoTurno {
+        PENDIENTE
+        CONFIRMADO
+        ATENDIDO
+        CANCELADO
+    }
+
+
+    enum DiaSemana {
+        LUNES
+        MARTES
+        MIERCOLES
+        JUEVES
+        VIERNES
+        SABADO
+        DOMINGO
+    }
+
+
+    class AgendaMedica {
+        - id_agenda : int
+        - dia : DiaSemana
+        - hora_desde : time
+        - hora_hasta : time
+
+        + contiene(turno : Turno) : bool
+        + se_superpone_con(otra : AgendaMedica) : bool
+    }
+
+
+    class ComprobanteAtencion {
+        - id_comprobante : int
+        - fecha_emision : datetime
+
+        + emitir()
+    }
+}
+
+
+' ============================================================
+' VACUNACION
+' ============================================================
+
+package "Vacunación" {
+
+    class Vacuna {
+        - id_vacuna : int
+        - nombre : str
+        - especie : str
+        - obligatoria : bool
+
+        + es_obligatoria() : bool
+    }
+
+
+    class AplicacionVacuna {
+        - id_aplicacion : int
+        - fecha_aplicacion : date
+        - fecha_proxima_dosis : date
+
+        + esta_vigente() : bool
+        + esta_vencida() : bool
+    }
+}
+
+
+' ============================================================
+' LABORATORIO Y TRAZABILIDAD
+' ============================================================
+
+package "Laboratorio y trazabilidad" {
+
+    enum EstadoOrden {
+        PENDIENTE
+        EN_PROCESO
+        COMPLETADA
+        CANCELADA
+    }
+
+
+    class OrdenDerivacionLaboratorio {
+        - id_orden : int
+        - fecha_emision : datetime
+        - estudio_solicitado : str
+        - estado : EstadoOrden
+        - observaciones : str
+
+        + agregar_muestra(muestra : MuestraBiologica)
+        + iniciar_proceso()
+        + completar()
+        + cancelar()
+    }
+
+
+    class MuestraBiologica {
+        - id_muestra : int
+        - tipo_muestra : str
+        - fecha_extraccion : datetime
+        - observaciones : str
+
+        + empaquetar()
+        + despachar()
+        + recibir()
+        + rechazar()
+        + analizar()
+        - cambiar_estado(estado : EstadoMuestra)
+        + obtener_historial() : List<HistorialEstadoMuestra>
+    }
+
+
+    class HistorialEstadoMuestra {
+        - id_historial : int
+        - nombre_estado : str
+        - fecha_hora : datetime
+        - observaciones : str
+    }
+
+
+    class ResultadoAnalisis {
+        - id_resultado : int
+        - fecha_resultado : datetime
+        - resultado : str
+        - observaciones : str
+
+        + registrar_resultado(resultado : str)
+        + obtener_resultado() : str
+    }
+}
+
+
+' ============================================================
+' PATRON STATE
+' ============================================================
+
+package "Patrón State" {
+
+    abstract class EstadoMuestra {
+        + empaquetar(muestra : MuestraBiologica)
+        + despachar(muestra : MuestraBiologica)
+        + recibir(muestra : MuestraBiologica)
+        + analizar(muestra : MuestraBiologica)
+        + rechazar(muestra : MuestraBiologica)
+        + obtener_nombre() : str
+    }
+
+
+    class EstadoExtraida
+
+    class EstadoEmpaquetada
+
+    class EstadoEnTransito
+
+    class EstadoRecibida
+
+    class EstadoAnalizada
+
+    class EstadoRechazada
+}
+
+
+' ============================================================
+' TRANSPORTE BIOLOGICO
+' ============================================================
+
+package "Transporte biológico" {
+
+    enum EstadoConservadora {
+        DISPONIBLE
+        EN_USO
+    }
+
+
+    enum EstadoRemito {
+        GENERADO
+        DESPACHADO
+        RECIBIDO
+        CERRADO
+    }
+
+
+    enum EstadoPrecinto {
+        INTACTO
+        ROTO
+    }
+
+
+    enum EstadoEnvio {
+        PENDIENTE
+        EN_TRANSITO
+        ENTREGADO
+    }
+
+
+    class ConservadoraIsotermica {
+        - id_conservadora : int
+        - codigo : str
+        - estado : EstadoConservadora
+
+        + marcar_en_uso()
+        + liberar()
+        + esta_disponible() : bool
+    }
+
+
+    class RemitoBiologico {
+        - id_remito : int
+        - fecha_emision : datetime
+        - estado : EstadoRemito
+        - observaciones : str
+
+        + agregar_muestra(muestra : MuestraBiologica)
+        + asignar_precinto(precinto : PrecintoSanitario)
+        + puede_despacharse() : bool
+        + despachar()
+        + marcar_recibido()
+        + cerrar()
+    }
+
+
+    class PrecintoSanitario {
+        - id_precinto : int
+        - codigo : str
+        - estado : EstadoPrecinto
+
+        + esta_intacto() : bool
+        + marcar_roto()
+    }
+
+
+    class Envio {
+        - id_envio : int
+        - fecha_hora_salida : datetime
+        - fecha_hora_llegada : datetime
+        - estado : EstadoEnvio
+        - observaciones : str
+
+        + iniciar()
+        + registrar_llegada()
+    }
+
+
+    class Recepcion {
+        - id_recepcion : int
+        - fecha_hora : datetime
+        - observaciones : str
+
+        + verificar_precinto() : bool
+        + procesar_recepcion()
+    }
+}
+
+
+' ============================================================
+' PATRON STRATEGY - REPORTES
+' ============================================================
+
+package "Reportes - Patrón Strategy" {
+
+    interface EstrategiaReporte {
+        + generar() : list
+    }
+
+
+    class GeneradorReportes {
+        - estrategia : EstrategiaReporte
+
+        + establecer_estrategia(estrategia : EstrategiaReporte)
+        + generar_reporte() : list
+    }
+
+
+    class ReporteAtencionesDerivaciones {
+        + generar() : list
+    }
+
+
+    class ReporteMuestrasRechazadas {
+        + generar() : list
+    }
+
+
+    class ReporteVacunasPendientes {
+        + generar() : list
+    }
+
+
+    class ReporteTiemposTransitoProcesamiento {
+        + generar() : list
+    }
+}
+
+
+' ============================================================
+' RELACIONES - DOMINIO CLINICO
+' ============================================================
+
+Cliente "1" -- "0..*" Mascota : responsable de >
+
+Mascota "1" *-- "1" HistoriaClinica : posee >
+
+HistoriaClinica "1" *-- "0..*" Atencion : contiene >
+
+Atencion --> TipoAtencion : tipo
+
+Clinica "1" -- "0..*" Veterinario : tiene >
+
+Veterinario "1" -- "0..*" AgendaMedica : dispone de >
+
+AgendaMedica --> DiaSemana : dia
+
+Veterinario "1" -- "0..*" Turno : posee >
+
+Mascota "1" -- "0..*" Turno : solicita >
+
+Veterinario "1" -- "0..*" Atencion : realiza >
+
+Turno --> EstadoTurno : estado
+
+Atencion "1" -- "0..1" ComprobanteAtencion : genera >
+
+
+' ============================================================
+' RELACIONES - VACUNACION
+' ============================================================
+
+Mascota "1" -- "0..*" AplicacionVacuna : recibe >
+
+Vacuna "1" -- "0..*" AplicacionVacuna : corresponde a >
+
+
+' ============================================================
+' RELACIONES - LABORATORIO
+' ============================================================
+
+Atencion "1" -- "0..*" OrdenDerivacionLaboratorio : genera >
+
+OrdenDerivacionLaboratorio "1" *-- "0..*" MuestraBiologica : contiene >
+
+MuestraBiologica "1" *-- "1..*" HistorialEstadoMuestra : registra >
+
+OrdenDerivacionLaboratorio --> EstadoOrden : estado
+
+MuestraBiologica "1" -- "0..1" ResultadoAnalisis : genera >
+
+
+' ============================================================
+' RELACIONES - STATE
+' ============================================================
+
+EstadoMuestra <|-- EstadoExtraida
+
+EstadoMuestra <|-- EstadoEmpaquetada
+
+EstadoMuestra <|-- EstadoEnTransito
+
+EstadoMuestra <|-- EstadoRecibida
+
+EstadoMuestra <|-- EstadoAnalizada
+
+EstadoMuestra <|-- EstadoRechazada
+
+MuestraBiologica --> EstadoMuestra : estado actual
+
+
+' ============================================================
+' RELACIONES - TRANSPORTE
+' ============================================================
+
+Clinica "1" -- "0..*" RemitoBiologico : origina >
+
+ConservadoraIsotermica "1" -- "0..*" RemitoBiologico : transporta >
+
+RemitoBiologico "0..1" -- "1..*" MuestraBiologica : contiene >
+
+RemitoBiologico "1" *-- "0..1" PrecintoSanitario : posee >
+
+RemitoBiologico "1" -- "0..1" Envio : genera >
+
+Envio "1" -- "0..1" Recepcion : finaliza en >
+
+ConservadoraIsotermica --> EstadoConservadora : estado
+
+RemitoBiologico --> EstadoRemito : estado
+
+PrecintoSanitario --> EstadoPrecinto : estado
+
+Envio --> EstadoEnvio : estado
+
+
+' ============================================================
+' RELACIONES - STRATEGY
+' ============================================================
+
+EstrategiaReporte <|.. ReporteAtencionesDerivaciones
+
+EstrategiaReporte <|.. ReporteMuestrasRechazadas
+
+EstrategiaReporte <|.. ReporteVacunasPendientes
+
+EstrategiaReporte <|.. ReporteTiemposTransitoProcesamiento
+
+GeneradorReportes --> EstrategiaReporte : utiliza >
+
+
+' ============================================================
+' NOTAS DE REGLAS IMPORTANTES
+' ============================================================
+
+note right of Veterinario
+Un turno sólo puede registrarse
+si se encuentra dentro de una
+franja de AgendaMedica.
+
+Además, un veterinario no puede
+tener turnos activos superpuestos.
+end note
+
+
+note right of AgendaMedica
+Las franjas horarias de un mismo
+veterinario no deben superponerse.
+
+hora_hasta debe ser mayor
+que hora_desde.
+end note
+
+
+note right of Mascota
+Al registrar una atención
+se controlan las vacunas
+obligatorias pendientes.
+end note
+
+
+note bottom of MuestraBiologica
+El cambio de estado se realiza
+mediante el patrón State.
+
+Cada transición genera un nuevo
+HistorialEstadoMuestra.
+Los registros históricos
+no se modifican.
+end note
+
+
+note bottom of Recepcion
+Si el precinto está INTACTO:
+las muestras pasan a RECIBIDA.
+
+Si el precinto está ROTO:
+las muestras pasan a RECHAZADA
+y no pueden procesarse.
+end note
+
+
+note bottom of RemitoBiologico
+Para despacharse debe poseer:
+- conservadora
+- precinto
+- al menos una muestra
+end note
+
+
+@enduml

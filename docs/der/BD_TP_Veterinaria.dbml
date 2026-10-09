@@ -1,0 +1,281 @@
+Enum tipo_atencion {
+  CONSULTA
+  CONTROL
+  URGENCIA
+}
+
+Table cliente {
+  id_cliente int [pk, increment]
+  nombre varchar(80) [not null]
+  apellido varchar(80) [not null]
+  dni varchar(20) [unique]
+  telefono varchar(30)
+  email varchar(120)
+}
+
+Table mascota {
+  id_mascota int [pk, increment]
+
+  id_cliente int [not null, ref: > cliente.id_cliente]
+
+  nombre varchar(80) [not null]
+  especie varchar(50) [not null]
+  raza varchar(80)
+  fecha_nacimiento date
+  sexo varchar(20)
+}
+
+Table historia_clinica {
+  id_historia int [pk, increment]
+
+  id_mascota int [not null, unique, ref: - mascota.id_mascota]
+
+  fecha_apertura date [not null]
+  observaciones text
+}
+
+Table atencion {
+  id_atencion int [pk, increment]
+
+  id_historia int [not null, ref: > historia_clinica.id_historia]
+  id_veterinario int [not null, ref: > veterinario.id_veterinario]
+
+  fecha_hora datetime [not null]
+  tipo tipo_atencion [not null]
+
+  motivo varchar(200)
+  diagnostico text
+  observaciones text
+}
+
+Table veterinario {
+  id_veterinario int [pk, increment]
+
+  id_clinica int [not null, ref: > clinica.id_clinica]
+
+  nombre varchar(80) [not null]
+  apellido varchar(80) [not null]
+
+  matricula varchar(30) [not null, unique]
+
+  especialidad varchar(100)
+}
+
+Enum estado_turno {
+  PENDIENTE
+  CONFIRMADO
+  ATENDIDO
+  CANCELADO
+}
+
+Table turno {
+  id_turno int [pk, increment]
+
+  id_mascota int [not null, ref: > mascota.id_mascota]
+  id_veterinario int [not null, ref: > veterinario.id_veterinario]
+
+  fecha_hora_inicio datetime [not null]
+  fecha_hora_fin datetime [not null]
+
+  estado estado_turno [not null]
+
+  motivo varchar(200)
+}
+
+Table vacuna {
+  id_vacuna int [pk, increment]
+
+  nombre varchar(100) [not null]
+  especie varchar(50) [not null]
+
+  obligatoria boolean [not null, default: false]
+}
+
+Table aplicacion_vacuna {
+  id_aplicacion int [pk, increment]
+
+  id_mascota int [not null, ref: > mascota.id_mascota]
+  id_vacuna int [not null, ref: > vacuna.id_vacuna]
+
+  fecha_aplicacion date [not null]
+  fecha_proxima_dosis date
+}
+
+Enum estado_orden {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  CANCELADA
+}
+
+Table orden_derivacion_laboratorio {
+  id_orden int [pk, increment]
+
+  id_atencion int [not null, ref: > atencion.id_atencion]
+
+  fecha_emision datetime [not null]
+
+  estudio_solicitado varchar(200) [not null]
+
+  estado estado_orden [not null]
+
+  observaciones text
+}
+
+Enum estado_muestra {
+  EXTRAIDA
+  EMPAQUETADA
+  EN_TRANSITO
+  RECIBIDA
+  ANALIZADA
+  RECHAZADA
+}
+
+Table muestra_biologica {
+  id_muestra int [pk, increment]
+
+  id_orden int [not null, ref: > orden_derivacion_laboratorio.id_orden]
+
+  id_remito int [ref: >? remito_biologico.id_remito]
+
+  tipo_muestra varchar(80) [not null]
+
+  fecha_extraccion datetime [not null]
+
+  estado_actual estado_muestra [not null]
+
+  observaciones text
+}
+
+Table historial_estado_muestra {
+  id_historial int [pk, increment]
+
+  id_muestra int [not null, ref: > muestra_biologica.id_muestra]
+
+  estado estado_muestra [not null]
+
+  fecha_hora datetime [not null]
+
+  observaciones text
+}
+
+Enum estado_conservadora {
+  DISPONIBLE
+  EN_USO
+}
+
+Table conservadora_isotermica {
+  id_conservadora int [pk, increment]
+
+  codigo varchar(50) [not null, unique]
+
+  estado estado_conservadora [not null]
+}
+
+Enum estado_remito {
+  GENERADO
+  DESPACHADO
+  RECIBIDO
+  CERRADO
+}
+
+Table remito_biologico {
+  id_remito int [pk, increment]
+
+  id_conservadora int [not null, ref: > conservadora_isotermica.id_conservadora]
+  id_clinica_origen int [not null, ref: > clinica.id_clinica]
+
+  fecha_emision datetime [not null]
+
+  estado estado_remito [not null]
+
+  observaciones text
+}
+
+Enum estado_precinto {
+  INTACTO
+  ROTO
+}
+
+Table precinto_sanitario {
+  id_precinto int [pk, increment]
+
+  id_remito int [not null, unique, ref: - remito_biologico.id_remito]
+
+  codigo varchar(50) [not null, unique]
+
+  estado estado_precinto [not null]
+}
+
+
+Enum estado_envio {
+  PENDIENTE
+  EN_TRANSITO
+  ENTREGADO
+}
+
+Table envio {
+  id_envio int [pk, increment]
+
+  id_remito int [not null, unique, ref: - remito_biologico.id_remito]
+
+  fecha_hora_salida datetime
+  fecha_hora_llegada datetime
+
+  estado estado_envio [not null]
+
+  observaciones text
+}
+
+Table recepcion {
+  id_recepcion int [pk, increment]
+
+  id_envio int [not null, unique, ref: - envio.id_envio]
+
+  fecha_hora datetime [not null]
+
+  observaciones text
+}
+
+Table resultado_analisis {
+  id_resultado int [pk, increment]
+
+  id_muestra int [not null, unique, ref: - muestra_biologica.id_muestra]
+
+  fecha_resultado datetime [not null]
+
+  resultado text [not null]
+
+  observaciones text
+}
+
+Table comprobante_atencion {
+  id_comprobante int [pk, increment]
+
+  id_atencion int [not null, unique, ref: - atencion.id_atencion]
+
+  fecha_emision datetime [not null]
+}
+
+Table clinica {
+  id_clinica int [pk, increment]
+
+  nombre varchar(100) [not null]
+  direccion varchar(200) [not null]
+  telefono varchar(30)
+}
+
+Table agenda_medica {
+  id_agenda int [pk, increment]
+
+  id_veterinario int [not null, ref: > veterinario.id_veterinario]
+
+  dia dia_semana [not null]
+
+  hora_desde time [not null]
+  hora_hasta time [not null]
+
+  indexes {
+    (id_veterinario, dia, hora_desde, hora_hasta) [unique]
+  }
+}
