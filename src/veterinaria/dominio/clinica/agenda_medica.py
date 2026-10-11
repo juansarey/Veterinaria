@@ -13,12 +13,8 @@ class DiaSemana(Enum):
 
 
 class AgendaMedica:
-    def __init__(
-        self,
-        dias_trabajo: set[DiaSemana],
-        hora_desde: time,
-        hora_hasta: time,
-    ):
+    def __init__(self, dias_trabajo: set[DiaSemana], hora_desde: time, hora_hasta: time):
+        
         if hora_hasta <= hora_desde:
             raise ValueError("hora_hasta debe ser mayor que hora_desde.")
 

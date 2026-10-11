@@ -146,14 +146,11 @@ Table muestra_biologica {
 
   id_orden int [not null, ref: > orden_derivacion_laboratorio.id_orden]
 
-  id_remito int [ref: >? remito_biologico.id_remito]
+  id_remito int [ref: > remito_biologico.id_remito]
 
   tipo_muestra varchar(80) [not null]
-
   fecha_extraccion datetime [not null]
-
   estado_actual estado_muestra [not null]
-
   observaciones text
 }
 
@@ -276,6 +273,8 @@ Table clinica {
 }
 
 Table agenda_medica {
+  Note: 'Como máximo una agenda por veterinario. Horario común para todos los días asociados; hora_hasta debe ser mayor que hora_desde. id_agenda es sólo un identificador de persistencia.'
+
   id_agenda int [pk, increment]
 
   id_veterinario int [not null, unique, ref: - veterinario.id_veterinario]
@@ -285,6 +284,8 @@ Table agenda_medica {
 }
 
 Table agenda_medica_dia {
+  Note: 'Un registro por día laboral seleccionado, sin duplicar agendas ni repetir un día dentro de la misma agenda.'
+
   id_agenda int [not null, ref: > agenda_medica.id_agenda]
   dia dia_semana [not null]
 

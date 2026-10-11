@@ -23,15 +23,24 @@ class Veterinario:
     def asignar_agenda(self, agenda: AgendaMedica) -> None:
         self._agenda = agenda
 
-    def puede_agendar(self, turno: Turno) -> bool:
-        if any(registrado is turno for registrado in self._turnos):
+    def puede_agendar(self, turno) -> bool:
+
+        for turno_registrado in self._turnos:
+            if turno_registrado is turno:
+                return False
+
+        if self._agenda is None:
             return False
-        if self._agenda is None or not self._agenda.contiene(turno):
+
+        if not self._agenda.contiene(turno):
             return False
-        return not any(
-            otro.estado != EstadoTurno.CANCELADO and turno.se_superpone_con(otro)
-            for otro in self._turnos
-        )
+
+        for otro_turno in self._turnos:
+            if otro_turno.estado != EstadoTurno.CANCELADO:
+                if turno.se_superpone_con(otro_turno):
+                    return False
+
+        return True
 
     def agregar_turno(self, turno: Turno) -> None:
         if not self.puede_agendar(turno):

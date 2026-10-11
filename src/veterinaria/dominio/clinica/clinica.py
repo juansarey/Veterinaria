@@ -1,7 +1,5 @@
 """Clínica y asociación de sus profesionales en memoria."""
 
-from __future__ import annotations
-
 from .veterinario import Veterinario
 
 
@@ -14,8 +12,9 @@ class Clinica:
         self._veterinarios = []
 
     def agregar_veterinario(self, veterinario):
-        if any(registrado is veterinario for registrado in self._veterinarios):
-            return False
+        for veterinario_registrado in self._veterinarios:
+            if veterinario_registrado is veterinario:
+                return False
 
         self._veterinarios.append(veterinario)
         return True

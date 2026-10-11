@@ -77,7 +77,7 @@ package "Dominio clínico" {
         - direccion : str
         - telefono : str
 
-        + agregar_veterinario(veterinario : Veterinario)
+        + agregar_veterinario(veterinario : Veterinario) : bool
         + obtener_veterinarios() : List<Veterinario>
     }
 
@@ -89,9 +89,10 @@ package "Dominio clínico" {
         - matricula : str
         - especialidad : str
 
+        ' Operación prevista para un incremento posterior.
         + registrar_atencion(atencion : Atencion)
         + obtener_turnos() : List<Turno>
-        + obtener_agenda() : AgendaMedica
+        + obtener_agenda() : AgendaMedica | None
         + asignar_agenda(agenda : AgendaMedica)
         + puede_agendar(turno : Turno) : bool
         + agregar_turno(turno : Turno)
@@ -414,13 +415,13 @@ HistoriaClinica "1" *-- "0..*" Atencion : contiene >
 
 Atencion --> TipoAtencion : tipo
 
-Clinica "1" -- "0..*" Veterinario : tiene >
+Clinica "1" --> "0..*" Veterinario : tiene >
 
 Veterinario "1" --> "0..1" AgendaMedica : dispone de >
 
 AgendaMedica --> DiaSemana : dias de trabajo
 
-Veterinario "1" -- "0..*" Turno : posee >
+Veterinario "1" --> "0..*" Turno : posee >
 
 Mascota "1" -- "0..*" Turno : solicita >
 
@@ -519,12 +520,14 @@ GeneradorReportes --> EstrategiaReporte : utiliza >
 ' ============================================================
 
 note right of Veterinario
-Un turno sólo puede registrarse
-si se encuentra dentro de una
-AgendaMedica.
+Tiene como máximo una AgendaMedica.
+Sin agenda no puede registrar turnos.
+El turno debe estar contenido
+en su disponibilidad semanal.
 
-Además, un veterinario no puede
-tener turnos activos superpuestos.
+No puede tener turnos no cancelados
+superpuestos. Los CANCELADOS no bloquean.
+Los turnos consecutivos son válidos.
 end note
 
 
@@ -532,9 +535,18 @@ note right of AgendaMedica
 Representa el horario habitual
 de atención para los días
 de trabajo seleccionados.
+El mismo horario se aplica a todos ellos.
 
 hora_hasta debe ser mayor
 que hora_desde.
+El turno debe comenzar y terminar
+en la misma fecha y dentro del horario,
+incluidos sus límites.
+end note
+
+note bottom of Clinica
+agregar_veterinario devuelve True al agregar
+y False si la misma instancia ya estaba registrada.
 end note
 
 
