@@ -388,7 +388,7 @@ package "Transporte biológico" {
 
 package "Reportes - Patrón Strategy" {
 
-    interface EstrategiaReporte {
+    class EstrategiaReporte {
         + generar() : list
     }
 
@@ -396,27 +396,42 @@ package "Reportes - Patrón Strategy" {
     class GeneradorReportes {
         - estrategia : EstrategiaReporte
 
-        + establecer_estrategia(estrategia : EstrategiaReporte)
+        + GeneradorReportes(estrategia : EstrategiaReporte)
+        + establecer_estrategia(estrategia : EstrategiaReporte) : bool
         + generar_reporte() : list
     }
 
 
     class ReporteAtencionesDerivaciones {
+        - atenciones : list
+
+        + ReporteAtencionesDerivaciones(atenciones : list)
         + generar() : list
     }
 
 
     class ReporteMuestrasRechazadas {
+        - remitos : list
+
+        + ReporteMuestrasRechazadas(remitos : list)
         + generar() : list
     }
 
 
     class ReporteVacunasPendientes {
+        - mascotas : list
+        - vacunas : list
+        - fecha_referencia : date
+
+        + ReporteVacunasPendientes(mascotas : list, vacunas : list, fecha_referencia : date)
         + generar() : list
     }
 
 
     class ReporteTiemposTransitoProcesamiento {
+        - envios : list
+
+        + ReporteTiemposTransitoProcesamiento(envios : list)
         + generar() : list
     }
 }
@@ -523,13 +538,13 @@ Envio --> EstadoEnvio : estado
 ' RELACIONES - STRATEGY
 ' ============================================================
 
-EstrategiaReporte <|.. ReporteAtencionesDerivaciones
+EstrategiaReporte <|-- ReporteAtencionesDerivaciones
 
-EstrategiaReporte <|.. ReporteMuestrasRechazadas
+EstrategiaReporte <|-- ReporteMuestrasRechazadas
 
-EstrategiaReporte <|.. ReporteVacunasPendientes
+EstrategiaReporte <|-- ReporteVacunasPendientes
 
-EstrategiaReporte <|.. ReporteTiemposTransitoProcesamiento
+EstrategiaReporte <|-- ReporteTiemposTransitoProcesamiento
 
 GeneradorReportes --> EstrategiaReporte : utiliza >
 

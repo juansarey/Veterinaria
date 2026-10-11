@@ -5,7 +5,7 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los ocho primeros incrementos están implementados en Python, funcionan en memoria
+Los nueve primeros incrementos están implementados en Python, funcionan en memoria
 y están validados:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -28,13 +28,18 @@ y están validados:
   `ANALIZADA`.
 - Octavo incremento: `ComprobanteAtencion`, emisión mediante construcción y relación
   unidireccional con `Atencion`.
+- Noveno incremento: patrón Strategy mediante `EstrategiaReporte` y
+  `GeneradorReportes`, con cuatro estrategias concretas para generar reportes de
+  atenciones y derivaciones, muestras rechazadas, vacunas pendientes y tiempos
+  promedio de tránsito y procesamiento.
 
-Resultado de la suite: **270 tests passed**. La persistencia y los demás módulos
-del MVP todavía no están implementados.
+Resultado de la suite: **309 tests passed**.
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
 rechazo por precinto roto, resultados de análisis y comprobantes de atención.
+También están implementados los dos patrones de diseño obligatorios, State y
+Strategy, y cuatro reportes no triviales. La persistencia permanece pendiente.
 
 ## Agenda y turnos
 
@@ -169,6 +174,41 @@ No se almacenan referencias inversas.
 El flujo del remito implementado termina en `RECIBIDO`; `CERRADO` permanece en el
 enum, pero `cerrar()` todavía no está implementado.
 
+## Reportes y patrón Strategy
+
+- `EstrategiaReporte` define la operación común `generar()`. Las cuatro estrategias
+  concretas reciben en su constructor las colecciones que necesitan y devuelven
+  listas de diccionarios.
+- `GeneradorReportes` conserva una estrategia intercambiable. `generar_reporte()`
+  delega exclusivamente en `estrategia.generar()` y no conoce la lógica particular
+  de ningún reporte. `establecer_estrategia()` permite cambiarla y devuelve `False`
+  si recibe `None`, sin reemplazar la estrategia vigente.
+- `ReporteAtencionesDerivaciones(atenciones)` relaciona cada atención con su
+  veterinario y sus órdenes obtenidas mediante `obtener_ordenes_derivacion()`,
+  agrupa los datos de las derivaciones y calcula su cantidad. Las órdenes canceladas
+  también se incluyen.
+- `ReporteMuestrasRechazadas(remitos)` recorre las muestras públicas de los remitos
+  e incluye únicamente las que se encuentran efectivamente en `RECHAZADA`. Obtiene
+  la fecha del historial y agrega el contexto del remito, la clínica y el precinto.
+  Un precinto roto por sí solo no incorpora una muestra: debe haberse producido la
+  transición `EN_TRANSITO -> RECHAZADA`.
+- `ReporteVacunasPendientes(mascotas, vacunas, fecha_referencia)` llama a
+  `Mascota.obtener_vacunas_pendientes()` y relaciona cada pendiente con su mascota,
+  responsable y fecha de referencia. No vuelve a implementar las reglas de
+  obligatoriedad, especie, vigencia o vencimiento.
+- `ReporteTiemposTransitoProcesamiento(envios)` devuelve un resumen con cantidad y
+  promedio de envíos con tránsito completo, calculado como llegada menos salida, y
+  cantidad y promedio de muestras procesadas, calculado entre los registros
+  `RECIBIDA` y `ANALIZADA`. Cada envío y cada muestra se cuentan una sola vez. Las
+  etapas incompletas y las muestras rechazadas no participan del promedio de
+  procesamiento; sin datos suficientes, la cantidad es cero y el promedio es
+  `None`. Las duraciones se conservan como `timedelta`.
+
+Los cuatro reportes son consultas en memoria y no modifican entidades, estados ni
+historiales. Las entidades del dominio no conocen al generador ni a las estrategias;
+los reportes aprovechan exclusivamente las relaciones unidireccionales y las APIs
+públicas existentes.
+
 ## Pruebas
 
 Desde la raíz del repositorio, con Python y pytest disponibles:
@@ -186,7 +226,10 @@ También cubren estados de conservadoras y precintos, reserva de conservadoras,
 empaquetado y despacho de remitos, envíos, registro de llegada, recepción según el
 estado del precinto, rechazo de muestras, prevención de cambios parciales y registro
 de resultados con transición de muestras recibidas a `ANALIZADA`. También cubren la
-construcción y las referencias de los comprobantes de atención.
+construcción y las referencias de los comprobantes de atención. Los 39 tests del
+noveno incremento verifican el cambio y la delegación de estrategias, los cuatro
+reportes, sus casos vacíos y múltiples, los promedios de tiempos y que las consultas
+no modifiquen el dominio.
 
 ## Documentación
 
@@ -198,10 +241,8 @@ El DER conserva `id_agenda` como identificador técnico de persistencia; el obje
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días laborales
 se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
-## Siguiente incremento
+## Próximas etapas por analizar
 
-La siguiente etapa incorporará el patrón Strategy y al menos cuatro reportes no
-triviales.
-
-Continúan pendientes para etapas posteriores: cierre del remito, liberación
-automática de la conservadora, persistencia e integración final.
+Permanecen pendientes de revisión contra el enunciado y el modelo: persistencia,
+cierre de `RemitoBiologico`, liberación de `ConservadoraIsotermica` y revisión e
+integración final.
