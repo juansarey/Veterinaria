@@ -1,4 +1,4 @@
-@startuml VeterinariaUML
+@startuml DG_TP_Veterinaria
 
 title Sistema Veterinaria - Diagrama de Clases UML
 
@@ -22,9 +22,6 @@ package "Dominio clínico" {
         - dni : str
         - telefono : str
         - email : str
-
-        + agregar_mascota(mascota : Mascota)
-        + obtener_mascotas() : List<Mascota>
     }
 
 
@@ -32,13 +29,14 @@ package "Dominio clínico" {
         - id_mascota : int
         - nombre : str
         - especie : str
+        - responsable : Cliente
         - raza : str
         - fecha_nacimiento : date
         - sexo : str
+        - historia_clinica : HistoriaClinica | None
 
+        + asignar_historia_clinica(historia : HistoriaClinica) : bool
         + obtener_historia_clinica() : HistoriaClinica
-        + obtener_vacunas_pendientes() : List<Vacuna>
-        + vacunas_obligatorias_al_dia() : bool
     }
 
 
@@ -59,6 +57,7 @@ package "Dominio clínico" {
         - motivo : str
         - diagnostico : str
         - observaciones : str
+        - veterinario : Veterinario
 
         + registrar_diagnostico(diagnostico : str)
     }
@@ -89,8 +88,6 @@ package "Dominio clínico" {
         - matricula : str
         - especialidad : str
 
-        ' Operación prevista para un incremento posterior.
-        + registrar_atencion(atencion : Atencion)
         + obtener_turnos() : List<Turno>
         + obtener_agenda() : AgendaMedica | None
         + asignar_agenda(agenda : AgendaMedica)
@@ -105,6 +102,7 @@ package "Dominio clínico" {
         - fecha_hora_fin : datetime
         - estado : EstadoTurno
         - motivo : str
+        - mascota : Mascota
 
         + cancelar()
         + confirmar()
@@ -407,13 +405,15 @@ package "Reportes - Patrón Strategy" {
 ' RELACIONES - DOMINIO CLINICO
 ' ============================================================
 
-Cliente "1" -- "0..*" Mascota : responsable de >
+Mascota --> Cliente : responsable
 
-Mascota "1" *-- "1" HistoriaClinica : posee >
+Mascota --> "0..1" HistoriaClinica : posee
 
-HistoriaClinica "1" *-- "0..*" Atencion : contiene >
+HistoriaClinica --> "0..*" Atencion : contiene
 
 Atencion --> TipoAtencion : tipo
+
+Atencion --> Veterinario : realizada por
 
 Clinica "1" --> "0..*" Veterinario : tiene >
 
@@ -423,9 +423,7 @@ AgendaMedica --> DiaSemana : dias de trabajo
 
 Veterinario "1" --> "0..*" Turno : posee >
 
-Mascota "1" -- "0..*" Turno : solicita >
-
-Veterinario "1" -- "0..*" Atencion : realiza >
+Turno --> Mascota : corresponde a
 
 Turno --> EstadoTurno : estado
 
@@ -547,13 +545,6 @@ end note
 note bottom of Clinica
 agregar_veterinario devuelve True al agregar
 y False si la misma instancia ya estaba registrada.
-end note
-
-
-note right of Mascota
-Al registrar una atención
-se controlan las vacunas
-obligatorias pendientes.
 end note
 
 

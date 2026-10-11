@@ -5,9 +5,15 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Primer incremento implementado en Python, en memoria y validado: `Clinica`,
-`Veterinario`, `AgendaMedica` y `Turno`. Resultado de la suite: **71 tests passed**.
-La persistencia y los demás módulos del MVP todavía no están implementados.
+Los dos primeros incrementos están implementados en Python, funcionan en memoria
+y están validados:
+
+- Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
+- Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
+  `TipoAtencion` y la asociación de cada `Turno` con una `Mascota`.
+
+Resultado de la suite: **89 tests passed**. La persistencia y los demás módulos
+del MVP todavía no están implementados.
 
 ## Agenda y turnos
 
@@ -30,6 +36,22 @@ permite un turno el lunes de 09:00 a 09:30, pero no el miércoles en ese horario
 Las relaciones almacenadas son unidireccionales: `Clinica -> Veterinario`,
 `Veterinario -> AgendaMedica` y `Veterinario -> Turno`.
 
+## Clientes, mascotas e historia clínica
+
+- Toda `Mascota` tiene obligatoriamente un `Cliente` responsable.
+- Una mascota puede tener una única `HistoriaClinica`. La primera asignación se
+  conserva y no puede reemplazarse con una segunda.
+- `HistoriaClinica` almacena sus `Atencion` y evita registrar dos veces la misma
+  instancia.
+- Cada `Atencion` indica su `TipoAtencion` e identifica al `Veterinario` que la
+  realizó.
+- Cada `Turno` corresponde obligatoriamente a una `Mascota`.
+
+Las relaciones del modelo de objetos son unidireccionales:
+`Mascota -> Cliente`, `Mascota -> HistoriaClinica`,
+`HistoriaClinica -> Atencion`, `Atencion -> Veterinario` y `Turno -> Mascota`.
+No se almacenan referencias inversas.
+
 ## Pruebas
 
 Desde la raíz del repositorio, con Python y pytest disponibles:
@@ -39,8 +61,9 @@ python -B -m pytest -p no:cacheprovider
 ```
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
-semanal, límites horarios, superposición, cancelaciones, estados de turnos y registro
-de veterinarios.
+semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
+de veterinarios, responsables de mascotas, asignación de historias clínicas,
+registro de atenciones y tipos de atención.
 
 ## Documentación
 
@@ -54,5 +77,8 @@ se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
 ## Siguiente incremento
 
-`Cliente`, `Mascota`, `HistoriaClinica` y `Atencion`, junto con sus tests.
-Este segundo incremento todavía no está desarrollado.
+El siguiente incremento incorporará `Vacuna` y `AplicacionVacuna`, incluida la
+validación de vacunas al registrar una atención.
+
+Continúan pendientes para etapas posteriores: laboratorio, muestras biológicas,
+cadena de custodia, transporte, remitos, resultados, reportes y persistencia.

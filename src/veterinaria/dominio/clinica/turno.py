@@ -16,11 +16,21 @@ class EstadoTurno(Enum):
 class Turno:
     """Intervalo fijo en fecha y hora local, inicialmente pendiente."""
 
-    def __init__(self, id_turno: int, fecha_hora_inicio: datetime, fecha_hora_fin: datetime, motivo: str = "",):
+    def __init__(
+        self,
+        id_turno: int,
+        fecha_hora_inicio: datetime,
+        fecha_hora_fin: datetime,
+        mascota,
+        motivo: str = "",
+    ):
         if fecha_hora_fin <= fecha_hora_inicio:
             raise ValueError("La fecha/hora de fin debe ser posterior al inicio.")
+        if mascota is None:
+            raise ValueError("Un turno debe corresponder a una mascota.")
         self.id_turno = id_turno
         self.motivo = motivo
+        self.mascota = mascota
         self._fecha_hora_inicio = fecha_hora_inicio
         self._fecha_hora_fin = fecha_hora_fin
         self._estado = EstadoTurno.PENDIENTE

@@ -3,6 +3,8 @@ from datetime import datetime, time
 import pytest
 
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
+from veterinaria.dominio.clinica.cliente import Cliente
+from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.turno import Turno
 
 
@@ -18,6 +20,12 @@ def agenda():
         time(8),
         time(13),
     )
+
+
+@pytest.fixture
+def mascota():
+    responsable = Cliente(1, "Laura", "García", "30111222")
+    return Mascota(1, "Luna", "Perro", responsable)
 
 
 @pytest.mark.parametrize("hora_hasta", [time(9), time(8)])
@@ -39,8 +47,8 @@ def test_rechaza_franja_sin_duracion_positiva(hora_hasta):
         (datetime(2026, 10, 12, 10), datetime(2026, 10, 13, 11), False),
     ],
 )
-def test_contencion_completa_en_una_fecha(agenda, inicio, fin, esperado):
-    assert agenda.contiene(Turno(1, inicio, fin)) is esperado
+def test_contencion_completa_en_una_fecha(agenda, mascota, inicio, fin, esperado):
+    assert agenda.contiene(Turno(1, inicio, fin, mascota)) is esperado
 
 
 @pytest.mark.parametrize(
