@@ -343,6 +343,8 @@ package "Transporte biológico" {
         + asignar_precinto(precinto : PrecintoSanitario) : bool
         + obtener_precinto() : PrecintoSanitario | None
         + puede_despacharse() : bool
+        + despachar(fecha_hora, observaciones="") : bool
+        + marcar_recibido() : bool
     }
 
 
@@ -358,23 +360,25 @@ package "Transporte biológico" {
 
     class Envio {
         - id_envio : int
-        - fecha_hora_salida : datetime
-        - fecha_hora_llegada : datetime
+        - remito : RemitoBiologico
+        - fecha_hora_salida : datetime | None
+        - fecha_hora_llegada : datetime | None
         - estado : EstadoEnvio
         - observaciones : str
 
-        + iniciar()
-        + registrar_llegada()
+        + iniciar(fecha_hora) : bool
+        + registrar_llegada(fecha_hora) : bool
     }
 
 
     class Recepcion {
         - id_recepcion : int
+        - envio : Envio
         - fecha_hora : datetime
         - observaciones : str
 
         + verificar_precinto() : bool
-        + procesar_recepcion()
+        + procesar_recepcion() : bool
     }
 }
 
@@ -503,7 +507,9 @@ RemitoBiologico --> "0..1" PrecintoSanitario : posee
 
 RemitoBiologico --> "0..*" MuestraBiologica : contiene
 
-Envio "1" -- "0..1" Recepcion : finaliza en >
+Envio --> RemitoBiologico : transporta
+
+Recepcion --> Envio : corresponde a
 
 ConservadoraIsotermica --> EstadoConservadora : estado
 
@@ -630,12 +636,21 @@ end note
 
 
 note bottom of Recepcion
+Procesa únicamente un Envio ENTREGADO.
+Valida todas las muestras antes de cambiarlas
+para evitar un lote parcialmente procesado.
+
 Si el precinto está INTACTO:
-las muestras pasan a RECIBIDA.
+EN_TRANSITO -> RECIBIDA.
 
 Si el precinto está ROTO:
-las muestras pasan a RECHAZADA
-y no pueden procesarse.
+EN_TRANSITO -> RECHAZADA.
+RECHAZADA no puede pasar a ANALIZADA.
+
+En ambos casos el remito pasa de
+DESPACHADO a RECIBIDO.
+Usa recibir() o rechazar() de la muestra;
+no modifica directamente State ni historial.
 end note
 
 
@@ -660,6 +675,28 @@ puede_despacharse() es una consulta sin efectos.
 Devuelve True sólo si el remito está GENERADO,
 tiene conservadora, al menos una muestra y un
 precinto INTACTO. No realiza el despacho.
+
+despachar() valida todas las muestras antes
+de cambiarlas y usa muestra.despachar():
+GENERADO -> DESPACHADO y
+EMPAQUETADA -> EN_TRANSITO.
+
+marcar_recibido() realiza únicamente
+DESPACHADO -> RECIBIDO. CERRADO existe
+en el enum, pero cerrar() no está implementado.
+
+La conservadora permanece EN_USO después
+de la recepción. No existe liberación automática
+ni está definido todavía cuándo liberarla.
+end note
+
+
+note right of Envio
+PENDIENTE -> EN_TRANSITO -> ENTREGADO.
+
+iniciar() coordina el despacho del remito.
+registrar_llegada() guarda la llegada,
+pero no procesa remito ni muestras.
 end note
 
 

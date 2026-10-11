@@ -85,3 +85,28 @@ class RemitoBiologico:
             return False
 
         return self._precinto.esta_intacto()
+
+    def despachar(self, fecha_hora, observaciones=""):
+        if not self.puede_despacharse():
+            return False
+
+        # Validar el lote completo antes de cambiar cualquier muestra.
+        for muestra in self._muestras:
+            if muestra.estado.obtener_nombre() != "EMPAQUETADA":
+                return False
+
+            if fecha_hora < muestra.obtener_historial()[-1].fecha_hora:
+                return False
+
+        for muestra in self._muestras:
+            muestra.despachar(fecha_hora, observaciones)
+
+        self._estado = EstadoRemito.DESPACHADO
+        return True
+
+    def marcar_recibido(self):
+        if self._estado != EstadoRemito.DESPACHADO:
+            return False
+
+        self._estado = EstadoRemito.RECIBIDO
+        return True

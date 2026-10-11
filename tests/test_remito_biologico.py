@@ -54,6 +54,129 @@ def test_conservadora_queda_en_uso_al_crear_remito(remito, conservadora):
     assert conservadora.esta_disponible() is False
 
 
+@pytest.fixture
+def remito_preparado(remito, fecha_emision):
+    for id_muestra in (1, 2):
+        remito.agregar_muestra(
+            MuestraBiologica(id_muestra, "Sangre", fecha_emision), fecha_emision
+        )
+    remito.asignar_precinto(PrecintoSanitario(1, "PREC-001"))
+    return remito
+
+
+@pytest.mark.parametrize("horas", [0, 1])
+def test_despacha_todas_las_muestras(remito_preparado, fecha_emision, horas):
+    remito = remito_preparado
+    salida = fecha_emision + timedelta(hours=horas)
+    muestras = remito.obtener_muestras()
+    historiales = [m.obtener_historial() for m in muestras]
+
+    assert remito.despachar(salida, "Despacho al laboratorio") is True
+    assert remito.estado == EstadoRemito.DESPACHADO
+    assert remito.puede_despacharse() is False
+    for muestra, anterior in zip(muestras, historiales):
+        assert muestra.estado.obtener_nombre() == "EN_TRANSITO"
+        historial = muestra.obtener_historial()
+        assert historial[:-1] == anterior
+        assert historial[-1].fecha_hora == salida
+        assert historial[-1].observaciones == "Despacho al laboratorio"
+
+
+@pytest.mark.parametrize("preparacion", ["vacio", "sin_precinto", "precinto_roto"])
+def test_no_despacha_remito_incompleto(remito, muestra, fecha_emision, preparacion):
+    if preparacion != "vacio":
+        remito.agregar_muestra(muestra, fecha_emision)
+    if preparacion != "sin_precinto":
+        precinto = PrecintoSanitario(1, "PREC-001")
+        remito.asignar_precinto(precinto)
+        if preparacion == "precinto_roto":
+            precinto.marcar_roto()
+    historial = muestra.obtener_historial()
+    estado = muestra.estado
+
+    assert remito.despachar(fecha_emision) is False
+    assert remito.estado == EstadoRemito.GENERADO
+    assert muestra.estado is estado
+    assert muestra.obtener_historial() == historial
+
+
+def test_estado_invalido_en_ultima_muestra_impide_despacho_parcial(
+    remito_preparado, fecha_emision
+):
+    remito = remito_preparado
+    muestras = remito.obtener_muestras()
+    muestras[-1].despachar(fecha_emision)
+    estados = [m.estado for m in muestras]
+    historiales = [m.obtener_historial() for m in muestras]
+
+    assert remito.despachar(fecha_emision) is False
+    assert remito.estado == EstadoRemito.GENERADO
+    assert [m.estado for m in muestras] == estados
+    assert [m.obtener_historial() for m in muestras] == historiales
+
+
+def test_fecha_invalida_en_ultima_muestra_impide_despacho_parcial(
+    remito_preparado, fecha_emision
+):
+    remito = remito_preparado
+    posterior = fecha_emision + timedelta(hours=2)
+    remito.agregar_muestra(MuestraBiologica(3, "Orina", fecha_emision), posterior)
+    muestras = remito.obtener_muestras()
+    historiales = [m.obtener_historial() for m in muestras]
+
+    assert remito.despachar(fecha_emision + timedelta(hours=1)) is False
+    assert remito.estado == EstadoRemito.GENERADO
+    assert all(m.estado.obtener_nombre() == "EMPAQUETADA" for m in muestras)
+    assert [m.obtener_historial() for m in muestras] == historiales
+
+
+def test_segundo_despacho_no_modifica_historial(remito_preparado, fecha_emision):
+    remito = remito_preparado
+    remito.despachar(fecha_emision)
+    muestras = remito.obtener_muestras()
+    historiales = [m.obtener_historial() for m in muestras]
+
+    assert remito.despachar(fecha_emision + timedelta(hours=1)) is False
+    assert remito.estado == EstadoRemito.DESPACHADO
+    assert [m.obtener_historial() for m in muestras] == historiales
+
+
+def test_no_agrega_muestras_despues_del_despacho(remito_preparado, fecha_emision):
+    remito = remito_preparado
+    remito.despachar(fecha_emision)
+    muestras = remito.obtener_muestras()
+    nueva = MuestraBiologica(3, "Orina", fecha_emision)
+    historial = nueva.obtener_historial()
+
+    assert remito.agregar_muestra(nueva, fecha_emision) is False
+    assert remito.obtener_muestras() == muestras
+    assert nueva.estado.obtener_nombre() == "EXTRAIDA"
+    assert nueva.obtener_historial() == historial
+
+
+def test_no_marca_recibido_desde_generado(remito_preparado):
+    assert remito_preparado.marcar_recibido() is False
+    assert remito_preparado.estado == EstadoRemito.GENERADO
+
+
+def test_marcar_recibido_no_procesa_muestras_ni_verifica_precinto(
+    remito_preparado, fecha_emision
+):
+    remito = remito_preparado
+    remito.despachar(fecha_emision)
+    remito.obtener_precinto().marcar_roto()
+    muestras = remito.obtener_muestras()
+    historiales = [m.obtener_historial() for m in muestras]
+
+    assert remito.marcar_recibido() is True
+    assert remito.estado == EstadoRemito.RECIBIDO
+    assert all(m.estado.obtener_nombre() == "EN_TRANSITO" for m in muestras)
+    assert [m.obtener_historial() for m in muestras] == historiales
+    assert remito.conservadora.estado == EstadoConservadora.EN_USO
+    assert remito.marcar_recibido() is False
+    assert remito.estado == EstadoRemito.RECIBIDO
+
+
 def test_rechaza_clinica_ausente_sin_ocupar_conservadora(
     conservadora, fecha_emision
 ):
