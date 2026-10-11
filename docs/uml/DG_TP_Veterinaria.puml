@@ -150,9 +150,8 @@ package "Dominio clínico" {
 
     class ComprobanteAtencion {
         - id_comprobante : int
+        - atencion : Atencion
         - fecha_emision : datetime
-
-        + emitir()
     }
 }
 
@@ -449,7 +448,7 @@ Turno --> Mascota : corresponde a
 
 Turno --> EstadoTurno : estado
 
-Atencion "1" -- "0..1" ComprobanteAtencion : genera >
+ComprobanteAtencion "0..1" --> "1" Atencion : corresponde a
 
 
 ' ============================================================
@@ -567,6 +566,20 @@ end note
 note bottom of Clinica
 agregar_veterinario devuelve True al agregar
 y False si la misma instancia ya estaba registrada.
+end note
+
+
+note left of ComprobanteAtencion
+La construcción correcta representa la emisión.
+No existe una operación emitir() ni un estado propio.
+
+atencion y fecha_emision no pueden ser None.
+La navegación existe sólo desde el comprobante
+hacia la atención.
+
+El máximo conceptual de un comprobante por atención
+proviene del unique del DER. Esa unicidad global
+todavía no se controla en memoria.
 end note
 
 

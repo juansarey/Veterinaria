@@ -5,7 +5,7 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los siete primeros incrementos están implementados en Python, funcionan en memoria
+Los ocho primeros incrementos están implementados en Python, funcionan en memoria
 y están validados:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -26,9 +26,15 @@ y están validados:
 - Séptimo incremento: `ResultadoAnalisis`, relación unidireccional con
   `MuestraBiologica`, registro de resultados y transición de muestras recibidas a
   `ANALIZADA`.
+- Octavo incremento: `ComprobanteAtencion`, emisión mediante construcción y relación
+  unidireccional con `Atencion`.
 
-Resultado de la suite: **266 tests passed**. La persistencia y los demás módulos
+Resultado de la suite: **270 tests passed**. La persistencia y los demás módulos
 del MVP todavía no están implementados.
+
+Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
+historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
+rechazo por precinto roto, resultados de análisis y comprobantes de atención.
 
 ## Agenda y turnos
 
@@ -60,6 +66,12 @@ Las relaciones almacenadas son unidireccionales: `Clinica -> Veterinario`,
   instancia.
 - Cada `Atencion` indica su `TipoAtencion` e identifica al `Veterinario` que la
   realizó.
+- `ComprobanteAtencion` conserva una referencia unidireccional a la `Atencion` y una
+  fecha de emisión explícita. Su construcción representa la emisión del comprobante;
+  no existe un método `emitir()` ni una referencia inversa desde `Atencion`.
+- La relación conceptual admite como máximo un comprobante persistido por atención
+  porque el DER declara `id_atencion` como único. Esa unicidad global todavía no se
+  controla en memoria.
 - Cada `Turno` corresponde obligatoriamente a una `Mascota`.
 
 Las relaciones del modelo de objetos son unidireccionales:
@@ -173,7 +185,8 @@ vacunas obligatorias, ciclos de órdenes, State de muestras y trazabilidad tempo
 También cubren estados de conservadoras y precintos, reserva de conservadoras,
 empaquetado y despacho de remitos, envíos, registro de llegada, recepción según el
 estado del precinto, rechazo de muestras, prevención de cambios parciales y registro
-de resultados con transición de muestras recibidas a `ANALIZADA`.
+de resultados con transición de muestras recibidas a `ANALIZADA`. También cubren la
+construcción y las referencias de los comprobantes de atención.
 
 ## Documentación
 
@@ -187,8 +200,8 @@ se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
 ## Siguiente incremento
 
-El próximo incremento funcional incorporará `ComprobanteAtencion`.
+La siguiente etapa incorporará el patrón Strategy y al menos cuatro reportes no
+triviales.
 
 Continúan pendientes para etapas posteriores: cierre del remito, liberación
-de la conservadora, Strategy, al menos cuatro reportes no triviales, persistencia e
-integración final.
+automática de la conservadora, persistencia e integración final.
