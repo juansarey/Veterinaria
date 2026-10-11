@@ -5,7 +5,7 @@ class HistoriaClinica:
         self.observaciones = observaciones
         self._atenciones = []
 
-    def agregar_atencion(self, atencion):
+    def _agregar_atencion(self, atencion):
         for atencion_registrada in self._atenciones:
             if atencion_registrada is atencion:
                 return False

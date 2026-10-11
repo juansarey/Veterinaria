@@ -29,17 +29,17 @@ def test_inicialmente_no_tiene_atenciones(historia):
 
 
 def test_agrega_atencion(historia, atencion):
-    assert historia.agregar_atencion(atencion) is True
+    assert historia._agregar_atencion(atencion) is True
     assert historia.obtener_atenciones() == [atencion]
 
 
 def test_no_agrega_dos_veces_la_misma_instancia(historia, atencion):
-    historia.agregar_atencion(atencion)
-    assert historia.agregar_atencion(atencion) is False
+    historia._agregar_atencion(atencion)
+    assert historia._agregar_atencion(atencion) is False
     assert historia.obtener_atenciones() == [atencion]
 
 
 def test_atenciones_devuelve_una_copia(historia, atencion):
-    historia.agregar_atencion(atencion)
+    historia._agregar_atencion(atencion)
     historia.obtener_atenciones().clear()
     assert historia.obtener_atenciones() == [atencion]

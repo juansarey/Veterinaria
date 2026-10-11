@@ -34,9 +34,15 @@ package "Dominio clínico" {
         - fecha_nacimiento : date
         - sexo : str
         - historia_clinica : HistoriaClinica | None
+        - aplicaciones_vacuna : List<AplicacionVacuna>
 
         + asignar_historia_clinica(historia : HistoriaClinica) : bool
         + obtener_historia_clinica() : HistoriaClinica
+        + agregar_aplicacion_vacuna(aplicacion : AplicacionVacuna) : bool
+        + obtener_aplicaciones_vacuna() : List<AplicacionVacuna>
+        + obtener_vacunas_pendientes(vacunas, fecha_referencia) : List<Vacuna>
+        + vacunas_obligatorias_al_dia(vacunas, fecha_referencia) : bool
+        + registrar_atencion(atencion : Atencion, vacunas) : bool
     }
 
 
@@ -45,7 +51,7 @@ package "Dominio clínico" {
         - fecha_apertura : date
         - observaciones : str
 
-        + agregar_atencion(atencion : Atencion)
+        - _agregar_atencion(atencion : Atencion) : bool
         + obtener_atenciones() : List<Atencion>
     }
 
@@ -166,11 +172,12 @@ package "Vacunación" {
 
     class AplicacionVacuna {
         - id_aplicacion : int
+        - vacuna : Vacuna
         - fecha_aplicacion : date
-        - fecha_proxima_dosis : date
+        - fecha_proxima_dosis : date | None
 
-        + esta_vigente() : bool
-        + esta_vencida() : bool
+        + esta_vigente(fecha_referencia : date) : bool
+        + esta_vencida(fecha_referencia : date) : bool
     }
 }
 
@@ -434,9 +441,9 @@ Atencion "1" -- "0..1" ComprobanteAtencion : genera >
 ' RELACIONES - VACUNACION
 ' ============================================================
 
-Mascota "1" -- "0..*" AplicacionVacuna : recibe >
+Mascota --> "0..*" AplicacionVacuna : registra
 
-Vacuna "1" -- "0..*" AplicacionVacuna : corresponde a >
+AplicacionVacuna --> Vacuna : corresponde a
 
 
 ' ============================================================
@@ -545,6 +552,33 @@ end note
 note bottom of Clinica
 agregar_veterinario devuelve True al agregar
 y False si la misma instancia ya estaba registrada.
+end note
+
+
+note right of AplicacionVacuna
+Antes de fecha_aplicacion:
+no vigente y no vencida.
+
+Desde fecha_aplicacion y antes de
+fecha_proxima_dosis: vigente.
+
+En fecha_proxima_dosis o después: vencida.
+Sin fecha_proxima_dosis permanece vigente
+desde su aplicación, sin vencimiento definido.
+end note
+
+
+note right of Mascota
+Una vacuna genera un requisito si es obligatoria
+y corresponde a la especie de la mascota.
+La cobertura se determina por id_vacuna y requiere
+al menos una aplicación vigente.
+
+registrar_atencion usa atencion.fecha_hora.date().
+Sin historia clínica o con vacunas pendientes,
+devuelve False y no modifica la historia.
+Si están al día, delega en
+HistoriaClinica._agregar_atencion().
 end note
 
 
