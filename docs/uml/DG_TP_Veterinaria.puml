@@ -242,12 +242,12 @@ package "Laboratorio y trazabilidad" {
 
     class ResultadoAnalisis {
         - id_resultado : int
+        - muestra : MuestraBiologica
         - fecha_resultado : datetime
         - resultado : str
         - observaciones : str
 
-        + registrar_resultado(resultado : str)
-        + obtener_resultado() : str
+        + registrar_resultado() : bool
     }
 }
 
@@ -473,7 +473,7 @@ MuestraBiologica --> "1..*" HistorialEstadoMuestra : registra
 
 OrdenDerivacionLaboratorio --> EstadoOrden : estado
 
-MuestraBiologica "1" -- "0..1" ResultadoAnalisis : genera >
+ResultadoAnalisis "0..1" --> "1" MuestraBiologica : corresponde a
 
 
 ' ============================================================
@@ -632,6 +632,24 @@ obtener_historial() devuelve una copia.
 Una fecha anterior al último registro se rechaza.
 Una fecha igual o posterior se acepta si
 la transición del estado también es válida.
+end note
+
+
+note left of ResultadoAnalisis
+registrar_resultado() delega en
+muestra.analizar(fecha_resultado, observaciones).
+
+La transición exitosa es:
+RECIBIDA -> ANALIZADA.
+
+ResultadoAnalisis no modifica directamente
+el State ni el historial. MuestraBiologica y
+su State validan la transición y registran el
+HistorialEstadoMuestra correspondiente.
+
+RECHAZADA no puede pasar a ANALIZADA porque
+su State rechaza analizar una muestra que no
+esté RECIBIDA.
 end note
 
 

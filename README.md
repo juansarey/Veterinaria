@@ -5,7 +5,7 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los seis primeros incrementos están implementados en Python, funcionan en memoria
+Los siete primeros incrementos están implementados en Python, funcionan en memoria
 y están validados:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -23,8 +23,11 @@ y están validados:
 - Sexto incremento: `Envio`, `EstadoEnvio`, `Recepcion`, despacho y recepción del
   remito, registro de llegada, verificación del precinto y transición de las muestras
   a `EN_TRANSITO`, `RECIBIDA` o `RECHAZADA`.
+- Séptimo incremento: `ResultadoAnalisis`, relación unidireccional con
+  `MuestraBiologica`, registro de resultados y transición de muestras recibidas a
+  `ANALIZADA`.
 
-Resultado de la suite: **251 tests passed**. La persistencia y los demás módulos
+Resultado de la suite: **266 tests passed**. La persistencia y los demás módulos
 del MVP todavía no están implementados.
 
 ## Agenda y turnos
@@ -96,10 +99,14 @@ No se almacenan referencias inversas.
 - Toda muestra comienza en `EXTRAIDA`. Su ciclo de vida se implementa mediante
   State: `EXTRAIDA -> EMPAQUETADA -> EN_TRANSITO -> RECIBIDA -> ANALIZADA`, con
   la alternativa `EN_TRANSITO -> RECHAZADA`.
-- La transición a `ANALIZADA` existe en el State de la muestra, pero el registro
-  funcional mediante `ResultadoAnalisis` todavía no está implementado.
+- `ResultadoAnalisis` mantiene una referencia unidireccional a `MuestraBiologica`.
+  `registrar_resultado()` delega en `MuestraBiologica.analizar()` usando la fecha y
+  las observaciones del resultado. Una muestra `RECIBIDA` pasa a `ANALIZADA` y
+  registra el cambio en su historial sin que el resultado modifique directamente el
+  State ni la colección histórica.
 - `ANALIZADA` y `RECHAZADA` son estados finales. Una operación inválida devuelve
-  `False` sin cambiar el estado ni agregar historial.
+  `False` sin cambiar el estado ni agregar historial. Como solamente `RECIBIDA`
+  admite `analizar()`, una muestra `RECHAZADA` no puede registrar un resultado.
 - La muestra mantiene registros inmutables de `HistorialEstadoMuestra`. El primer
   registro corresponde a `EXTRAIDA` y cada transición exitosa agrega uno nuevo.
   Las fechas anteriores al último registro son rechazadas; las iguales o
@@ -165,7 +172,8 @@ registro de atenciones, tipos de atención, vigencia de aplicaciones y control d
 vacunas obligatorias, ciclos de órdenes, State de muestras y trazabilidad temporal.
 También cubren estados de conservadoras y precintos, reserva de conservadoras,
 empaquetado y despacho de remitos, envíos, registro de llegada, recepción según el
-estado del precinto, rechazo de muestras y prevención de cambios parciales.
+estado del precinto, rechazo de muestras, prevención de cambios parciales y registro
+de resultados con transición de muestras recibidas a `ANALIZADA`.
 
 ## Documentación
 
@@ -179,11 +187,8 @@ se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
 ## Siguiente incremento
 
-El próximo incremento funcional incorporará `ResultadoAnalisis`, su integración con
-`MuestraBiologica` y el registro que coordine la transición `RECIBIDA -> ANALIZADA`.
-Antes de implementarlo se analizará su alcance exacto contra el enunciado, sin
-agregar reglas innecesarias.
+El próximo incremento funcional incorporará `ComprobanteAtencion`.
 
 Continúan pendientes para etapas posteriores: cierre del remito, liberación
-automática de la conservadora, `ResultadoAnalisis`, registro funcional del resultado,
-`ComprobanteAtencion`, reportes Strategy y persistencia.
+de la conservadora, Strategy, al menos cuatro reportes no triviales, persistencia e
+integración final.
