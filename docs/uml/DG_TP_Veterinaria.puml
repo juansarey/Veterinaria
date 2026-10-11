@@ -322,24 +322,27 @@ package "Transporte biológico" {
         - codigo : str
         - estado : EstadoConservadora
 
-        + marcar_en_uso()
-        + liberar()
+        + marcar_en_uso() : bool
+        + liberar() : bool
         + esta_disponible() : bool
     }
 
 
     class RemitoBiologico {
         - id_remito : int
+        - clinica_origen : Clinica
+        - conservadora : ConservadoraIsotermica
         - fecha_emision : datetime
-        - estado : EstadoRemito
         - observaciones : str
+        - estado : EstadoRemito
+        - precinto : PrecintoSanitario | None
+        - muestras : List<MuestraBiologica>
 
-        + agregar_muestra(muestra : MuestraBiologica)
-        + asignar_precinto(precinto : PrecintoSanitario)
+        + agregar_muestra(muestra : MuestraBiologica, fecha_hora, observaciones="") : bool
+        + obtener_muestras() : List<MuestraBiologica>
+        + asignar_precinto(precinto : PrecintoSanitario) : bool
+        + obtener_precinto() : PrecintoSanitario | None
         + puede_despacharse() : bool
-        + despachar()
-        + marcar_recibido()
-        + cerrar()
     }
 
 
@@ -349,7 +352,7 @@ package "Transporte biológico" {
         - estado : EstadoPrecinto
 
         + esta_intacto() : bool
-        + marcar_roto()
+        + marcar_roto() : bool
     }
 
 
@@ -492,15 +495,13 @@ MuestraBiologica --> EstadoMuestra : estado actual
 ' RELACIONES - TRANSPORTE
 ' ============================================================
 
-Clinica "1" -- "0..*" RemitoBiologico : origina >
+RemitoBiologico --> Clinica : origen
 
-ConservadoraIsotermica "1" -- "0..*" RemitoBiologico : transporta >
+RemitoBiologico --> ConservadoraIsotermica : utiliza
 
-RemitoBiologico "0..1" -- "1..*" MuestraBiologica : contiene >
+RemitoBiologico --> "0..1" PrecintoSanitario : posee
 
-RemitoBiologico "1" *-- "0..1" PrecintoSanitario : posee >
-
-RemitoBiologico "1" -- "0..1" Envio : genera >
+RemitoBiologico --> "0..*" MuestraBiologica : contiene
 
 Envio "1" -- "0..1" Recepcion : finaliza en >
 
@@ -639,10 +640,33 @@ end note
 
 
 note bottom of RemitoBiologico
-Para despacharse debe poseer:
-- conservadora
-- precinto
-- al menos una muestra
+Al crearse reserva una conservadora DISPONIBLE,
+que pasa a EN_USO. Una conservadora ocupada
+no puede utilizarse para construir otro remito.
+liberar() existe, pero aún no se ejecuta
+automáticamente desde el flujo del remito.
+
+agregar_muestra evita repetir la misma instancia
+y delega en muestra.empaquetar(). Sólo incorpora
+la muestra si EXTRAIDA -> EMPAQUETADA tiene éxito;
+el State y el historial pertenecen a la muestra.
+
+La primera asignación de precinto devuelve True.
+None o una segunda asignación devuelven False.
+Actualmente puede asignarse a un remito vacío o
+ya roto, y pueden agregarse muestras posteriormente.
+
+puede_despacharse() es una consulta sin efectos.
+Devuelve True sólo si el remito está GENERADO,
+tiene conservadora, al menos una muestra y un
+precinto INTACTO. No realiza el despacho.
+end note
+
+
+note right of PrecintoSanitario
+Estado inicial: INTACTO.
+ROTO es final. Romper el precinto no cambia
+inmediatamente el estado de las muestras.
 end note
 
 

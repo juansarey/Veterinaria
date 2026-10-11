@@ -5,7 +5,7 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los cuatro primeros incrementos están implementados en Python, funcionan en memoria
+Los cinco primeros incrementos están implementados en Python, funcionan en memoria
 y están validados:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -16,8 +16,12 @@ y están validados:
 - Cuarto incremento: `OrdenDerivacionLaboratorio`, `EstadoOrden`,
   `MuestraBiologica`, `HistorialEstadoMuestra` y patrón State para el ciclo de
   vida de las muestras.
+- Quinto incremento: `ConservadoraIsotermica`, `EstadoConservadora`,
+  `PrecintoSanitario`, `EstadoPrecinto`, `RemitoBiologico`, `EstadoRemito`,
+  empaquetado de muestras mediante el remito y consulta de sus condiciones de
+  despacho.
 
-Resultado de la suite: **174 tests passed**. La persistencia y los demás módulos
+Resultado de la suite: **206 tests passed**. La persistencia y los demás módulos
 del MVP todavía no están implementados.
 
 ## Agenda y turnos
@@ -98,6 +102,34 @@ No se almacenan referencias inversas.
 - Los estados reciben temporalmente la muestra durante una operación, pero no la
   almacenan. Tampoco existen referencias inversas desde orden, muestra o historial.
 
+## Empaquetado y preparación del remito
+
+- Una `ConservadoraIsotermica` comienza `DISPONIBLE`. Al crear un
+  `RemitoBiologico`, la conservadora requerida queda `EN_USO`; mientras esté
+  ocupada no puede utilizarse para crear otro remito. `liberar()` está disponible,
+  pero todavía no forma parte de un flujo automático del remito.
+- El remito conserva referencias unidireccionales hacia la `Clinica` de origen,
+  la conservadora, un precinto opcional y sus muestras. Ninguna de esas entidades
+  almacena una referencia inversa al remito en el modelo de objetos.
+- `agregar_muestra()` evita registrar dos veces la misma instancia y delega en
+  `MuestraBiologica.empaquetar()`. La muestra se incorpora solamente si la
+  transición `EXTRAIDA -> EMPAQUETADA` tiene éxito; la propia muestra administra
+  su State y agrega el registro correspondiente a su historial.
+- La primera asignación de un `PrecintoSanitario` devuelve `True`. Asignar `None`
+  o intentar reemplazar el precinto devuelve `False`. En el comportamiento actual
+  se permite asignar un precinto a un remito sin muestras, asignar uno que ya esté
+  roto y agregar muestras después de haberlo asignado.
+- Un precinto comienza `INTACTO` y puede pasar una sola vez a `ROTO`. Romperlo no
+  modifica inmediatamente las muestras; esa validación corresponderá al flujo de
+  recepción.
+- `puede_despacharse()` es una consulta sin efectos laterales. Devuelve `True`
+  solamente si el remito sigue `GENERADO`, tiene conservadora, al menos una
+  muestra y un precinto intacto. No despacha el remito ni cambia estados.
+
+El flujo implementado hasta ahora es: crear el remito y reservar la conservadora,
+agregar y empaquetar muestras, asignar el precinto y consultar
+`puede_despacharse()`.
+
 ## Pruebas
 
 Desde la raíz del repositorio, con Python y pytest disponibles:
@@ -111,6 +143,8 @@ semanal, límites horarios, superposición, cancelaciones, estados de turnos, re
 de veterinarios, responsables de mascotas, asignación de historias clínicas,
 registro de atenciones, tipos de atención, vigencia de aplicaciones y control de
 vacunas obligatorias, ciclos de órdenes, State de muestras y trazabilidad temporal.
+También cubren estados de conservadoras y precintos, reserva de conservadoras,
+empaquetado mediante remitos, duplicados por identidad y condiciones de despacho.
 
 ## Documentación
 
@@ -124,9 +158,11 @@ se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
 ## Siguiente incremento
 
-El siguiente incremento incorporará `ConservadoraIsotermica`, `RemitoBiologico`
-y `PrecintoSanitario`, junto con el empaquetado de muestras.
+El siguiente incremento incorporará `Envio`, `Recepcion`, el despacho y la
+recepción, incluida la validación efectiva del precinto.
 
-Continúan pendientes para etapas posteriores: `Envio`, `Recepcion`, validación real
-del precinto, `ResultadoAnalisis`, `ComprobanteAtencion`, reportes Strategy y
+Continúan pendientes para etapas posteriores: despacho efectivo del remito,
+transición de muestras a `EN_TRANSITO`, recepción con transición a `RECIBIDA` o
+`RECHAZADA` según el precinto, cierre del remito, liberación coordinada de la
+conservadora, `ResultadoAnalisis`, `ComprobanteAtencion`, reportes Strategy y
 persistencia.
