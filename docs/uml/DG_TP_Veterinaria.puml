@@ -64,8 +64,11 @@ package "Dominio clínico" {
         - diagnostico : str
         - observaciones : str
         - veterinario : Veterinario
+        - ordenes_derivacion : List<OrdenDerivacionLaboratorio>
 
         + registrar_diagnostico(diagnostico : str)
+        + agregar_orden_derivacion(orden : OrdenDerivacionLaboratorio) : bool
+        + obtener_ordenes_derivacion() : List<OrdenDerivacionLaboratorio>
     }
 
 
@@ -202,11 +205,13 @@ package "Laboratorio y trazabilidad" {
         - estudio_solicitado : str
         - estado : EstadoOrden
         - observaciones : str
+        - muestras : List<MuestraBiologica>
 
-        + agregar_muestra(muestra : MuestraBiologica)
-        + iniciar_proceso()
-        + completar()
-        + cancelar()
+        + agregar_muestra(muestra : MuestraBiologica) : bool
+        + obtener_muestras() : List<MuestraBiologica>
+        + iniciar_proceso() : bool
+        + completar() : bool
+        + cancelar() : bool
     }
 
 
@@ -215,19 +220,20 @@ package "Laboratorio y trazabilidad" {
         - tipo_muestra : str
         - fecha_extraccion : datetime
         - observaciones : str
+        - estado : EstadoMuestra
+        - historial : List<HistorialEstadoMuestra>
 
-        + empaquetar()
-        + despachar()
-        + recibir()
-        + rechazar()
-        + analizar()
-        - cambiar_estado(estado : EstadoMuestra)
+        + empaquetar(fecha_hora, observaciones="") : bool
+        + despachar(fecha_hora, observaciones="") : bool
+        + recibir(fecha_hora, observaciones="") : bool
+        + rechazar(fecha_hora, observaciones="") : bool
+        + analizar(fecha_hora, observaciones="") : bool
+        - _cambiar_estado(nuevo_estado, fecha_hora, observaciones="") : bool
         + obtener_historial() : List<HistorialEstadoMuestra>
     }
 
 
     class HistorialEstadoMuestra {
-        - id_historial : int
         - nombre_estado : str
         - fecha_hora : datetime
         - observaciones : str
@@ -253,11 +259,13 @@ package "Laboratorio y trazabilidad" {
 package "Patrón State" {
 
     abstract class EstadoMuestra {
-        + empaquetar(muestra : MuestraBiologica)
-        + despachar(muestra : MuestraBiologica)
-        + recibir(muestra : MuestraBiologica)
-        + analizar(muestra : MuestraBiologica)
-        + rechazar(muestra : MuestraBiologica)
+        - nombre : str
+
+        + empaquetar(muestra, fecha_hora, observaciones="") : bool
+        + despachar(muestra, fecha_hora, observaciones="") : bool
+        + recibir(muestra, fecha_hora, observaciones="") : bool
+        + analizar(muestra, fecha_hora, observaciones="") : bool
+        + rechazar(muestra, fecha_hora, observaciones="") : bool
         + obtener_nombre() : str
     }
 
@@ -450,11 +458,11 @@ AplicacionVacuna --> Vacuna : corresponde a
 ' RELACIONES - LABORATORIO
 ' ============================================================
 
-Atencion "1" -- "0..*" OrdenDerivacionLaboratorio : genera >
+Atencion --> "0..*" OrdenDerivacionLaboratorio : genera
 
-OrdenDerivacionLaboratorio "1" *-- "0..*" MuestraBiologica : contiene >
+OrdenDerivacionLaboratorio --> "0..*" MuestraBiologica : contiene
 
-MuestraBiologica "1" *-- "1..*" HistorialEstadoMuestra : registra >
+MuestraBiologica --> "1..*" HistorialEstadoMuestra : registra
 
 OrdenDerivacionLaboratorio --> EstadoOrden : estado
 
@@ -582,14 +590,41 @@ HistoriaClinica._agregar_atencion().
 end note
 
 
-note bottom of MuestraBiologica
-El cambio de estado se realiza
-mediante el patrón State.
+note right of OrdenDerivacionLaboratorio
+Transiciones válidas:
+PENDIENTE -> EN_PROCESO
+PENDIENTE -> CANCELADA
+EN_PROCESO -> COMPLETADA
+EN_PROCESO -> CANCELADA
 
-Cada transición genera un nuevo
-HistorialEstadoMuestra.
-Los registros históricos
-no se modifican.
+COMPLETADA y CANCELADA son finales.
+completar() no inspecciona el estado
+de las muestras. Ambos ciclos son independientes.
+end note
+
+
+note bottom of MuestraBiologica
+Estado inicial: EXTRAIDA.
+La muestra delega sus operaciones
+en el objeto State actual.
+
+EXTRAIDA -> EMPAQUETADA
+EMPAQUETADA -> EN_TRANSITO
+EN_TRANSITO -> RECIBIDA o RECHAZADA
+RECIBIDA -> ANALIZADA
+
+ANALIZADA y RECHAZADA son finales.
+Las operaciones inválidas devuelven False
+sin cambiar el estado ni agregar historial.
+
+Cada transición exitosa agrega un nuevo
+HistorialEstadoMuestra inmutable.
+El historial comienza con EXTRAIDA y
+obtener_historial() devuelve una copia.
+
+Una fecha anterior al último registro se rechaza.
+Una fecha igual o posterior se acepta si
+la transición del estado también es válida.
 end note
 
 

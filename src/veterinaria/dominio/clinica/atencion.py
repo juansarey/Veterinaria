@@ -28,6 +28,18 @@ class Atencion:
         self.diagnostico = diagnostico
         self.observaciones = observaciones
         self.veterinario = veterinario
+        self._ordenes_derivacion = []
 
     def registrar_diagnostico(self, diagnostico):
         self.diagnostico = diagnostico
+
+    def agregar_orden_derivacion(self, orden):
+        for orden_registrada in self._ordenes_derivacion:
+            if orden_registrada is orden:
+                return False
+
+        self._ordenes_derivacion.append(orden)
+        return True
+
+    def obtener_ordenes_derivacion(self):
+        return self._ordenes_derivacion.copy()

@@ -5,7 +5,7 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los tres primeros incrementos están implementados en Python, funcionan en memoria
+Los cuatro primeros incrementos están implementados en Python, funcionan en memoria
 y están validados:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -13,8 +13,11 @@ y están validados:
   `TipoAtencion` y la asociación de cada `Turno` con una `Mascota`.
 - Tercer incremento: `Vacuna`, `AplicacionVacuna`, registro de aplicaciones en
   `Mascota` y validación de vacunas obligatorias al registrar una atención.
+- Cuarto incremento: `OrdenDerivacionLaboratorio`, `EstadoOrden`,
+  `MuestraBiologica`, `HistorialEstadoMuestra` y patrón State para el ciclo de
+  vida de las muestras.
 
-Resultado de la suite: **122 tests passed**. La persistencia y los demás módulos
+Resultado de la suite: **174 tests passed**. La persistencia y los demás módulos
 del MVP todavía no están implementados.
 
 ## Agenda y turnos
@@ -75,6 +78,26 @@ No se almacenan referencias inversas.
   `False` sin modificar la historia; si pasa, delega el agregado en
   `HistoriaClinica._agregar_atencion()`.
 
+## Órdenes, muestras y trazabilidad
+
+- Una `Atencion` puede registrar varias `OrdenDerivacionLaboratorio`, y cada orden
+  mantiene su colección de `MuestraBiologica`. La navegación es unidireccional:
+  `Atencion -> OrdenDerivacionLaboratorio -> MuestraBiologica`.
+- Las órdenes comienzan en `PENDIENTE`, pueden pasar a `EN_PROCESO` y finalizar
+  como `COMPLETADA` o `CANCELADA`. `completar()` controla solamente el ciclo de
+  la orden y no inspecciona el estado de sus muestras.
+- Toda muestra comienza en `EXTRAIDA`. Su ciclo de vida se implementa mediante
+  State: `EXTRAIDA -> EMPAQUETADA -> EN_TRANSITO -> RECIBIDA -> ANALIZADA`, con
+  la alternativa `EN_TRANSITO -> RECHAZADA`.
+- `ANALIZADA` y `RECHAZADA` son estados finales. Una operación inválida devuelve
+  `False` sin cambiar el estado ni agregar historial.
+- La muestra mantiene registros inmutables de `HistorialEstadoMuestra`. El primer
+  registro corresponde a `EXTRAIDA` y cada transición exitosa agrega uno nuevo.
+  Las fechas anteriores al último registro son rechazadas; las iguales o
+  posteriores se admiten cuando la transición también es válida.
+- Los estados reciben temporalmente la muestra durante una operación, pero no la
+  almacenan. Tampoco existen referencias inversas desde orden, muestra o historial.
+
 ## Pruebas
 
 Desde la raíz del repositorio, con Python y pytest disponibles:
@@ -87,7 +110,7 @@ python -m pytest
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
 de veterinarios, responsables de mascotas, asignación de historias clínicas,
 registro de atenciones, tipos de atención, vigencia de aplicaciones y control de
-vacunas obligatorias.
+vacunas obligatorias, ciclos de órdenes, State de muestras y trazabilidad temporal.
 
 ## Documentación
 
@@ -101,9 +124,9 @@ se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
 ## Siguiente incremento
 
-El siguiente incremento incorporará `OrdenDerivacionLaboratorio`.
+El siguiente incremento incorporará `ConservadoraIsotermica`, `RemitoBiologico`
+y `PrecintoSanitario`, junto con el empaquetado de muestras.
 
-Continúan pendientes para etapas posteriores: `MuestraBiologica`,
-`HistorialEstadoMuestra`, patrón State, `ConservadoraIsotermica`,
-`RemitoBiologico`, `PrecintoSanitario`, `Envio`, `Recepcion`, `ResultadoAnalisis`,
-`ComprobanteAtencion`, reportes Strategy y persistencia.
+Continúan pendientes para etapas posteriores: `Envio`, `Recepcion`, validación real
+del precinto, `ResultadoAnalisis`, `ComprobanteAtencion`, reportes Strategy y
+persistencia.
