@@ -29,6 +29,24 @@ def inicializar_bd(conexion: Connection) -> None:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vacuna (
+                id_vacuna INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre VARCHAR(100) NOT NULL,
+                especie VARCHAR(50) NOT NULL,
+                obligatoria INTEGER NOT NULL DEFAULT 0
+                    CHECK (obligatoria IN (0, 1))
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS aplicacion_vacuna (
+                id_aplicacion INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_mascota INTEGER NOT NULL REFERENCES mascota(id_mascota),
+                id_vacuna INTEGER NOT NULL REFERENCES vacuna(id_vacuna),
+                fecha_aplicacion TEXT NOT NULL,
+                fecha_proxima_dosis TEXT
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS historia_clinica (
                 id_historia INTEGER PRIMARY KEY AUTOINCREMENT,
                 id_mascota INTEGER NOT NULL UNIQUE

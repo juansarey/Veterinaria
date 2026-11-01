@@ -6,7 +6,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_2_y_3():
+def test_crea_solamente_las_tablas_de_persistencia_1_2_3_y_4():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -16,6 +16,8 @@ def test_crea_solamente_las_tablas_de_persistencia_1_2_y_3():
         assert {fila["name"] for fila in tablas} == {
             "cliente",
             "mascota",
+            "vacuna",
+            "aplicacion_vacuna",
             "historia_clinica",
             "clinica",
             "veterinario",
@@ -69,8 +71,12 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
         ("id_historia", "historia_clinica", "id_historia"),
         ("id_veterinario", "veterinario", "id_veterinario"),
     }),
+    ("aplicacion_vacuna", {
+        ("id_mascota", "mascota", "id_mascota"),
+        ("id_vacuna", "vacuna", "id_vacuna"),
+    }),
 ])
-def test_fk_de_persistencia_2_y_3_sin_cascadas(conexion, tabla, referencias):
+def test_fk_de_persistencia_2_3_y_4_sin_cascadas(conexion, tabla, referencias):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
     assert {
         (fila["from"], fila["table"], fila["to"])
@@ -146,6 +152,19 @@ def test_fk_de_persistencia_2_y_3_sin_cascadas(conexion, tabla, referencias):
         ("motivo", "VARCHAR(200)", 0, 0),
         ("diagnostico", "TEXT", 0, 0),
         ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("vacuna", [
+        ("id_vacuna", "INTEGER", 0, 1),
+        ("nombre", "VARCHAR(100)", 1, 0),
+        ("especie", "VARCHAR(50)", 1, 0),
+        ("obligatoria", "INTEGER", 1, 0),
+    ]),
+    ("aplicacion_vacuna", [
+        ("id_aplicacion", "INTEGER", 0, 1),
+        ("id_mascota", "INTEGER", 1, 0),
+        ("id_vacuna", "INTEGER", 1, 0),
+        ("fecha_aplicacion", "TEXT", 1, 0),
+        ("fecha_proxima_dosis", "TEXT", 0, 0),
     ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):

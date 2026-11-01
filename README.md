@@ -6,9 +6,10 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1, Persistencia 2 y Persistencia 3
-incorporan almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`,
-`AgendaMedica`, `Turno`, `HistoriaClinica` y `Atencion`:
+en memoria y están validados. Persistencia 1, Persistencia 2, Persistencia 3 y
+Persistencia 4 incorporan almacenamiento para `Cliente`, `Mascota`, `Clinica`,
+`Veterinario`, `AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna` y
+`AplicacionVacuna`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 - Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
@@ -39,10 +40,11 @@ La persistencia utiliza SQLite mediante `sqlite3` y el patrón DAO. Incluye una
 conexión compartida con claves foráneas activas, SQL parametrizado y control
 externo de las transacciones. Persistencia 1 cubre `Cliente` y `Mascota`;
 Persistencia 2 agrega `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`, y
-Persistencia 3 incorpora `HistoriaClinica` y `Atencion`.
+Persistencia 3 incorpora `HistoriaClinica` y `Atencion`. Persistencia 4 agrega
+`Vacuna` y `AplicacionVacuna`.
 
-Resultado de la suite: **482 tests passed** (309 de dominio y patrones, 49 de
-Persistencia 1, 81 de Persistencia 2 y 43 de Persistencia 3).
+Resultado de la suite: **524 tests passed** (309 de dominio y patrones, 49 de
+Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3 y 42 de Persistencia 4).
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
@@ -301,6 +303,66 @@ tests/persistencia/
     test_atencion_dao.py
 ```
 
+## Persistencia 4: vacunas y aplicaciones
+
+Persistencia 4 continúa con SQLite, `sqlite3`, el patrón DAO, una conexión
+compartida, claves foráneas activas, SQL parametrizado, IDs explícitos y
+transacciones externas. La inicialización agrega las tablas `vacuna` y
+`aplicacion_vacuna`.
+
+Los DAO implementan estas operaciones:
+
+- `VacunaDAO`: `crear()`, `obtener_por_id()`, `listar()`, `actualizar()` y
+  `eliminar()`. Conserva `id_vacuna` explícito y actualiza solamente `nombre`,
+  `especie` y `obligatoria`.
+- `AplicacionVacunaDAO`: `crear(aplicacion, id_mascota)`, `obtener_por_id()`,
+  `listar_por_mascota()`, `actualizar(aplicacion)` y `eliminar()`. Conserva
+  `id_aplicacion` como identidad explícita del dominio. `id_mascota` se establece
+  al crear y `id_vacuna` se obtiene desde `aplicacion.vacuna`.
+
+Una actualización de `AplicacionVacuna` modifica exclusivamente
+`fecha_aplicacion` y `fecha_proxima_dosis`; no reasigna `id_mascota` ni
+`id_vacuna`. El modelo de objetos mantiene la navegación
+`Mascota -> AplicacionVacuna -> Vacuna`, sin referencias inversas desde la
+aplicación hacia la mascota ni desde la vacuna hacia aplicaciones o mascotas.
+
+`AplicacionVacunaDAO` utiliza `VacunaDAO` con la misma conexión para reconstruir la
+vacuna asociada. La recuperación no llama a
+`Mascota.agregar_aplicacion_vacuna()` ni modifica la mascota. `MascotaDAO` continúa
+recuperando mascotas básicas con su colección de aplicaciones vacía; cuando se
+necesitan aplicaciones se consultan mediante `listar_por_mascota()`.
+
+`fecha_aplicacion` y `fecha_proxima_dosis` se almacenan con `date.isoformat()` y se
+recuperan con `date.fromisoformat()`. Una próxima dosis ausente se conserva como
+`NULL` en SQLite y `None` en Python. La regla que exige una próxima dosis posterior
+a la aplicación continúa en el dominio y no se duplica como restricción SQL.
+
+`obligatoria` se representa como `INTEGER NOT NULL`: `False` corresponde a `0` y
+`True` a `1`. Una restricción `CHECK (obligatoria IN (0, 1))` impide otros valores;
+no se utilizan cadenas `TRUE` o `FALSE`.
+
+SQLite garantiza PK, FK, `NOT NULL` y el `CHECK` booleano, y los DAO propagan
+`sqlite3.IntegrityError`. La base no duplica reglas de vigencia, vencimiento,
+especie, vacunas pendientes ni `vacunas_obligatorias_al_dia()`, que permanecen en
+el dominio.
+
+No se agregaron cascadas. Una vacuna referenciada o una mascota con aplicaciones
+no pueden eliminarse por las FK; una vacuna sin aplicaciones y una aplicación
+concreta sí pueden eliminarse. Ningún DAO ejecuta `commit()` ni `rollback()`; el
+código coordinador controla la transacción sobre la conexión compartida.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    vacuna_dao.py
+    aplicacion_vacuna_dao.py
+
+tests/persistencia/
+    test_vacuna_dao.py
+    test_aplicacion_vacuna_dao.py
+```
+
 ## Vacunación
 
 - `Mascota` mantiene una colección de `AplicacionVacuna`; cada aplicación conoce
@@ -457,6 +519,10 @@ Los 43 tests de Persistencia 3 verifican las tablas de historias y atenciones, s
 operaciones DAO, filtros, orden determinista, conversiones ISO, valores opcionales,
 integridad, carga simple, reconstrucción sin ejecutar reglas de registro, FK
 hacia mascota e historia sin reasignación y control externo de transacciones.
+Los 42 tests de Persistencia 4 verifican las tablas y DAO de vacunas y aplicaciones,
+IDs explícitos, orden de listados, mapeo booleano, fechas ISO, valores opcionales,
+integridad, reconstrucción de vacunas, carga simple de mascotas, relaciones fijas,
+eliminaciones protegidas por FK y transacciones externas.
 
 ## Documentación
 
@@ -468,11 +534,13 @@ El DER conserva `id_agenda` como identificador técnico de persistencia; el obje
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
 laborales se almacenan en `agenda_medica_dia`, con clave compuesta
 `(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2 ni
-Persistencia 3.
+Persistencia 3 ni Persistencia 4.
 
 ## Próximas etapas
 
-La próxima etapa potencial es Persistencia 4 para `Vacuna` y
-`AplicacionVacuna`; todavía no está implementada. También permanecen pendientes el
-resto de la persistencia, el cierre de `RemitoBiologico`, la liberación de
-`ConservadoraIsotermica` y la revisión e integración final.
+La próxima etapa potencial es Persistencia 5 para `OrdenDerivacionLaboratorio`,
+`MuestraBiologica` e `HistorialEstadoMuestra`; todavía no está implementada. Allí
+podrá comenzar la persistencia del ciclo de vida de las muestras y del patrón State.
+También permanecen pendientes el resto de la persistencia, el cierre de
+`RemitoBiologico`, la liberación de `ConservadoraIsotermica` y la revisión e
+integración final.

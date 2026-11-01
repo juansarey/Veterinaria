@@ -555,6 +555,31 @@ package "Persistencia - SQLite y DAO" {
         + actualizar(atencion : Atencion) : bool
         + eliminar(id_atencion : int) : bool
     }
+
+
+    class VacunaDAO {
+        - conexion : sqlite3.Connection
+
+        + VacunaDAO(conexion : sqlite3.Connection)
+        + crear(vacuna : Vacuna)
+        + obtener_por_id(id_vacuna : int) : Vacuna | None
+        + listar() : List<Vacuna>
+        + actualizar(vacuna : Vacuna) : bool
+        + eliminar(id_vacuna : int) : bool
+    }
+
+
+    class AplicacionVacunaDAO {
+        - conexion : sqlite3.Connection
+        - vacuna_dao : VacunaDAO
+
+        + AplicacionVacunaDAO(conexion : sqlite3.Connection)
+        + crear(aplicacion : AplicacionVacuna, id_mascota : int)
+        + obtener_por_id(id_aplicacion : int) : AplicacionVacuna | None
+        + listar_por_mascota(id_mascota : int) : List<AplicacionVacuna>
+        + actualizar(aplicacion : AplicacionVacuna) : bool
+        + eliminar(id_aplicacion : int) : bool
+    }
 }
 
 
@@ -696,6 +721,12 @@ AtencionDAO ..> Atencion : persiste
 
 AtencionDAO ..> VeterinarioDAO : utiliza
 
+VacunaDAO ..> Vacuna : persiste
+
+AplicacionVacunaDAO ..> AplicacionVacuna : persiste
+
+AplicacionVacunaDAO ..> VacunaDAO : utiliza
+
 ConexionSQLite ..> SQLiteConnection : crea
 
 ClienteDAO ..> SQLiteConnection : recibe
@@ -713,6 +744,10 @@ TurnoDAO ..> SQLiteConnection : recibe
 HistoriaClinicaDAO ..> SQLiteConnection : recibe
 
 AtencionDAO ..> SQLiteConnection : recibe
+
+VacunaDAO ..> SQLiteConnection : recibe
+
+AplicacionVacunaDAO ..> SQLiteConnection : recibe
 
 InicializadorBD ..> SQLiteConnection : recibe
 

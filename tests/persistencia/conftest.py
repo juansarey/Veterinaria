@@ -10,7 +10,10 @@ from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
 from veterinaria.dominio.clinica.turno import Turno
 from veterinaria.dominio.clinica.veterinario import Veterinario
+from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
+from veterinaria.dominio.vacunacion.vacuna import Vacuna
 from veterinaria.persistencia.agenda_medica_dao import AgendaMedicaDAO
+from veterinaria.persistencia.aplicacion_vacuna_dao import AplicacionVacunaDAO
 from veterinaria.persistencia.atencion_dao import AtencionDAO
 from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
@@ -19,6 +22,7 @@ from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 from veterinaria.persistencia.mascota_dao import MascotaDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
+from veterinaria.persistencia.vacuna_dao import VacunaDAO
 from veterinaria.persistencia.veterinario_dao import VeterinarioDAO
 
 
@@ -70,6 +74,16 @@ def historia_clinica_dao(conexion):
 @pytest.fixture
 def atencion_dao(conexion):
     return AtencionDAO(conexion)
+
+
+@pytest.fixture
+def vacuna_dao(conexion):
+    return VacunaDAO(conexion)
+
+
+@pytest.fixture
+def aplicacion_vacuna_dao(conexion):
+    return AplicacionVacunaDAO(conexion)
 
 
 @pytest.fixture
@@ -131,4 +145,19 @@ def atencion(veterinario):
         veterinario,
         "Paciente estable",
         "Repetir control anual",
+    )
+
+
+@pytest.fixture
+def vacuna():
+    return Vacuna(80, "Antirrábica", "Perro", True)
+
+
+@pytest.fixture
+def aplicacion_vacuna(vacuna):
+    return AplicacionVacuna(
+        90,
+        vacuna,
+        date(2026, 2, 3),
+        date(2027, 2, 3),
     )
