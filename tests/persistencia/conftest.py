@@ -10,6 +10,10 @@ from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
 from veterinaria.dominio.clinica.turno import Turno
 from veterinaria.dominio.clinica.veterinario import Veterinario
+from veterinaria.dominio.laboratorio.muestra_biologica import MuestraBiologica
+from veterinaria.dominio.laboratorio.orden_derivacion_laboratorio import (
+    OrdenDerivacionLaboratorio,
+)
 from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
 from veterinaria.dominio.vacunacion.vacuna import Vacuna
 from veterinaria.persistencia.agenda_medica_dao import AgendaMedicaDAO
@@ -21,6 +25,10 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 from veterinaria.persistencia.mascota_dao import MascotaDAO
+from veterinaria.persistencia.muestra_biologica_dao import MuestraBiologicaDAO
+from veterinaria.persistencia.orden_derivacion_laboratorio_dao import (
+    OrdenDerivacionLaboratorioDAO,
+)
 from veterinaria.persistencia.turno_dao import TurnoDAO
 from veterinaria.persistencia.vacuna_dao import VacunaDAO
 from veterinaria.persistencia.veterinario_dao import VeterinarioDAO
@@ -84,6 +92,16 @@ def vacuna_dao(conexion):
 @pytest.fixture
 def aplicacion_vacuna_dao(conexion):
     return AplicacionVacunaDAO(conexion)
+
+
+@pytest.fixture
+def orden_derivacion_laboratorio_dao(conexion):
+    return OrdenDerivacionLaboratorioDAO(conexion)
+
+
+@pytest.fixture
+def muestra_biologica_dao(conexion):
+    return MuestraBiologicaDAO(conexion)
 
 
 @pytest.fixture
@@ -160,4 +178,24 @@ def aplicacion_vacuna(vacuna):
         vacuna,
         date(2026, 2, 3),
         date(2027, 2, 3),
+    )
+
+
+@pytest.fixture
+def orden_derivacion_laboratorio():
+    return OrdenDerivacionLaboratorio(
+        100,
+        datetime(2026, 11, 3, 11, 22, 33, 456789),
+        "Hemograma completo",
+        "Procesar con prioridad",
+    )
+
+
+@pytest.fixture
+def muestra_biologica():
+    return MuestraBiologica(
+        110,
+        "Sangre",
+        datetime(2026, 11, 3, 11, 45, 12, 654321),
+        "Tubo con EDTA",
     )

@@ -6,7 +6,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_2_3_y_4():
+def test_crea_solamente_las_tablas_de_persistencia_1_2_3_4_y_5():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -25,6 +25,9 @@ def test_crea_solamente_las_tablas_de_persistencia_1_2_3_y_4():
             "agenda_medica",
             "agenda_medica_dia",
             "turno",
+            "orden_derivacion_laboratorio",
+            "muestra_biologica",
+            "historial_estado_muestra",
         }
 
 
@@ -75,8 +78,19 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
         ("id_mascota", "mascota", "id_mascota"),
         ("id_vacuna", "vacuna", "id_vacuna"),
     }),
+    ("orden_derivacion_laboratorio", {
+        ("id_atencion", "atencion", "id_atencion"),
+    }),
+    ("muestra_biologica", {
+        ("id_orden", "orden_derivacion_laboratorio", "id_orden"),
+    }),
+    ("historial_estado_muestra", {
+        ("id_muestra", "muestra_biologica", "id_muestra"),
+    }),
 ])
-def test_fk_de_persistencia_2_3_y_4_sin_cascadas(conexion, tabla, referencias):
+def test_fk_de_persistencia_2_3_4_y_5_sin_cascadas(
+    conexion, tabla, referencias
+):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
     assert {
         (fila["from"], fila["table"], fila["to"])
@@ -165,6 +179,30 @@ def test_fk_de_persistencia_2_3_y_4_sin_cascadas(conexion, tabla, referencias):
         ("id_vacuna", "INTEGER", 1, 0),
         ("fecha_aplicacion", "TEXT", 1, 0),
         ("fecha_proxima_dosis", "TEXT", 0, 0),
+    ]),
+    ("orden_derivacion_laboratorio", [
+        ("id_orden", "INTEGER", 0, 1),
+        ("id_atencion", "INTEGER", 1, 0),
+        ("fecha_emision", "TEXT", 1, 0),
+        ("estudio_solicitado", "VARCHAR(200)", 1, 0),
+        ("estado", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("muestra_biologica", [
+        ("id_muestra", "INTEGER", 0, 1),
+        ("id_orden", "INTEGER", 1, 0),
+        ("id_remito", "INTEGER", 0, 0),
+        ("tipo_muestra", "VARCHAR(80)", 1, 0),
+        ("fecha_extraccion", "TEXT", 1, 0),
+        ("estado_actual", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("historial_estado_muestra", [
+        ("id_historial", "INTEGER", 0, 1),
+        ("id_muestra", "INTEGER", 1, 0),
+        ("estado", "TEXT", 1, 0),
+        ("fecha_hora", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
     ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):

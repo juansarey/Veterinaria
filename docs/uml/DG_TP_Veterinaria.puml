@@ -580,6 +580,29 @@ package "Persistencia - SQLite y DAO" {
         + actualizar(aplicacion : AplicacionVacuna) : bool
         + eliminar(id_aplicacion : int) : bool
     }
+
+
+    class OrdenDerivacionLaboratorioDAO {
+        - conexion : sqlite3.Connection
+
+        + OrdenDerivacionLaboratorioDAO(conexion : sqlite3.Connection)
+        + crear(orden : OrdenDerivacionLaboratorio, id_atencion : int)
+        + obtener_por_id(id_orden : int) : OrdenDerivacionLaboratorio | None
+        + listar_por_atencion(id_atencion : int) : List<OrdenDerivacionLaboratorio>
+        + actualizar(orden : OrdenDerivacionLaboratorio) : bool
+        + eliminar(id_orden : int) : bool
+    }
+
+
+    class MuestraBiologicaDAO {
+        - conexion : sqlite3.Connection
+
+        + MuestraBiologicaDAO(conexion : sqlite3.Connection)
+        + crear(muestra : MuestraBiologica, id_orden : int)
+        + obtener_por_id(id_muestra : int) : MuestraBiologica | None
+        + listar_por_orden(id_orden : int) : List<MuestraBiologica>
+        + actualizar(muestra : MuestraBiologica) : bool
+    }
 }
 
 
@@ -727,6 +750,24 @@ AplicacionVacunaDAO ..> AplicacionVacuna : persiste
 
 AplicacionVacunaDAO ..> VacunaDAO : utiliza
 
+OrdenDerivacionLaboratorioDAO ..> OrdenDerivacionLaboratorio : persiste
+
+MuestraBiologicaDAO ..> MuestraBiologica : persiste
+
+MuestraBiologicaDAO ..> HistorialEstadoMuestra : gestiona historial
+
+MuestraBiologicaDAO ..> EstadoExtraida : reconstruye
+
+MuestraBiologicaDAO ..> EstadoEmpaquetada : reconstruye
+
+MuestraBiologicaDAO ..> EstadoEnTransito : reconstruye
+
+MuestraBiologicaDAO ..> EstadoRecibida : reconstruye
+
+MuestraBiologicaDAO ..> EstadoAnalizada : reconstruye
+
+MuestraBiologicaDAO ..> EstadoRechazada : reconstruye
+
 ConexionSQLite ..> SQLiteConnection : crea
 
 ClienteDAO ..> SQLiteConnection : recibe
@@ -748,6 +789,10 @@ AtencionDAO ..> SQLiteConnection : recibe
 VacunaDAO ..> SQLiteConnection : recibe
 
 AplicacionVacunaDAO ..> SQLiteConnection : recibe
+
+OrdenDerivacionLaboratorioDAO ..> SQLiteConnection : recibe
+
+MuestraBiologicaDAO ..> SQLiteConnection : recibe
 
 InicializadorBD ..> SQLiteConnection : recibe
 

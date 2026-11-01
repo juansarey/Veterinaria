@@ -6,10 +6,12 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1, Persistencia 2, Persistencia 3 y
-Persistencia 4 incorporan almacenamiento para `Cliente`, `Mascota`, `Clinica`,
-`Veterinario`, `AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna` y
-`AplicacionVacuna`:
+en memoria y están validados. Persistencia 1, Persistencia 2, Persistencia 3,
+Persistencia 4 y Persistencia 5 incorporan almacenamiento para `Cliente`,
+`Mascota`, `Clinica`, `Veterinario`, `AgendaMedica`, `Turno`, `HistoriaClinica`,
+`Atencion`, `Vacuna`, `AplicacionVacuna`, `OrdenDerivacionLaboratorio` y
+`MuestraBiologica`. El historial de estados se persiste como parte interna de
+`MuestraBiologicaDAO`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 - Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
@@ -40,11 +42,13 @@ La persistencia utiliza SQLite mediante `sqlite3` y el patrón DAO. Incluye una
 conexión compartida con claves foráneas activas, SQL parametrizado y control
 externo de las transacciones. Persistencia 1 cubre `Cliente` y `Mascota`;
 Persistencia 2 agrega `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`, y
-Persistencia 3 incorpora `HistoriaClinica` y `Atencion`. Persistencia 4 agrega
-`Vacuna` y `AplicacionVacuna`.
+Persistencia 3 incorpora `HistoriaClinica` y `Atencion`; Persistencia 4 agrega
+`Vacuna` y `AplicacionVacuna`; Persistencia 5 incorpora
+`OrdenDerivacionLaboratorio`, `MuestraBiologica` y su historial de estados.
 
-Resultado de la suite: **524 tests passed** (309 de dominio y patrones, 49 de
-Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3 y 42 de Persistencia 4).
+Resultado de la suite: **585 tests passed** (309 de dominio y patrones, 49 de
+Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3, 42 de Persistencia 4
+y 61 de Persistencia 5).
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
@@ -363,6 +367,100 @@ tests/persistencia/
     test_aplicacion_vacuna_dao.py
 ```
 
+## Persistencia 5: órdenes, muestras y trazabilidad
+
+Persistencia 5 mantiene SQLite, `sqlite3`, el patrón DAO, la conexión compartida,
+el SQL parametrizado, los IDs explícitos y el control externo de las transacciones.
+La inicialización agrega las tablas `orden_derivacion_laboratorio`,
+`muestra_biologica` e `historial_estado_muestra`.
+
+Los DAO implementan estas operaciones:
+
+- `OrdenDerivacionLaboratorioDAO`: `crear(orden, id_atencion)`,
+  `obtener_por_id()`, `listar_por_atencion()`, `actualizar(orden)` y `eliminar()`.
+  `id_atencion` se establece al crear y no cambia al actualizar. `EstadoOrden` se
+  almacena por nombre. La recuperación restaura el estado sin ejecutar
+  `iniciar_proceso()`, `completar()` ni `cancelar()`, y deja vacía la colección de
+  muestras.
+- `MuestraBiologicaDAO`: `crear(muestra, id_orden)`, `obtener_por_id()`,
+  `listar_por_orden()` y `actualizar(muestra)`. `id_orden` se establece al crear y
+  no se modifica al actualizar. El DAO no expone una operación de eliminación.
+
+Los estados persistibles de una muestra son `EXTRAIDA`, `EMPAQUETADA`,
+`EN_TRANSITO`, `RECIBIDA`, `ANALIZADA` y `RECHAZADA`. El DAO usa un diccionario
+explícito para reconstruir la clase State concreta. No serializa objetos State ni
+utiliza `pickle`. Las reglas `EXTRAIDA -> EMPAQUETADA`,
+`EMPAQUETADA -> EN_TRANSITO`, `EN_TRANSITO -> RECIBIDA / RECHAZADA` y
+`RECIBIDA -> ANALIZADA` permanecen exclusivamente en el patrón State; el DAO no
+decide ni ejecuta transiciones.
+
+La reconstrucción de una muestra sigue estos pasos:
+
+1. recupera la fila de `muestra_biologica`;
+2. consulta el historial en orden estable por `fecha_hora, id_historial`;
+3. construye los objetos `HistorialEstadoMuestra`;
+4. reconstruye la clase State concreta;
+5. utiliza el constructor normal de `MuestraBiologica` para sus datos estructurales;
+6. el mapper privado reemplaza controladamente `_estado` y `_historial` con los
+   valores persistidos.
+
+Este mecanismo es interno al mapper, no una operación pública del dominio. No
+ejecuta transiciones, no inserta registros al leer, no genera un evento persistido
+y no duplica el registro inicial `EXTRAIDA`.
+
+`HistorialEstadoMuestra` continúa siendo inmutable y no incorpora un ID al dominio.
+`id_historial` es una clave técnica administrada exclusivamente por SQLite. No
+existe un `HistorialEstadoMuestraDAO` público: `MuestraBiologicaDAO` inserta y
+consulta los registros históricos, pero no los actualiza ni ofrece eliminarlos de
+forma individual.
+
+Al recuperar una muestra se valida que el estado actual y todos los estados del
+historial sean conocidos, que el historial no esté vacío, que comience en
+`EXTRAIDA`, que sus fechas sean no decrecientes y que el último registro coincida
+con `estado_actual`. Una inconsistencia produce `ValueError`; no se corrigen datos
+históricos silenciosamente.
+
+La actualización conserva la trazabilidad mediante una comparación de prefijo.
+Antes de escribir, los registros persistidos deben constituir un prefijo idéntico
+del historial del objeto, comparando `nombre_estado`, `fecha_hora` y
+`observaciones`. Después se actualizan los datos propios y `estado_actual`, y se
+insertan solamente los eventos nuevos. No se borra ni se reconstruye el historial
+anterior. Una segunda llamada a `actualizar()` sin transiciones nuevas no agrega
+registros duplicados.
+
+`muestra_biologica.id_remito` existe como columna nullable y permanece siempre en
+`NULL` durante Persistencia 5. Todavía no se asigna un `RemitoBiologico` ni existe
+una FK activa hacia `remito_biologico`, porque esa tabla no forma parte del esquema
+SQLite implementado. El DER conserva la relación final esperada. Cuando
+Persistencia 6 incorpore la tabla, el inicializador deberá usar un orden de creación
+compatible y declarar la FK
+`muestra_biologica.id_remito -> remito_biologico.id_remito`.
+
+No se agregaron cascadas. Una orden sin muestras puede eliminarse; una orden con
+muestras queda protegida por la FK. `MuestraBiologicaDAO` no expone eliminación y
+el historial no ofrece eliminación individual. Ningún DAO ejecuta `commit()` ni
+`rollback()`: el llamador puede confirmar o revertir como una unidad tanto la
+creación de la muestra con su historial inicial como la actualización del estado
+con sus nuevos eventos.
+
+Las relaciones del dominio siguen siendo unidireccionales:
+`Atencion -> OrdenDerivacionLaboratorio -> MuestraBiologica`,
+`MuestraBiologica -> HistorialEstadoMuestra` y
+`MuestraBiologica -> EstadoMuestra`. Las FK no agregan relaciones inversas al
+modelo de objetos.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    orden_derivacion_laboratorio_dao.py
+    muestra_biologica_dao.py
+
+tests/persistencia/
+    test_orden_derivacion_laboratorio_dao.py
+    test_muestra_biologica_dao.py
+```
+
 ## Vacunación
 
 - `Mascota` mantiene una colección de `AplicacionVacuna`; cada aplicación conoce
@@ -523,24 +621,34 @@ Los 42 tests de Persistencia 4 verifican las tablas y DAO de vacunas y aplicacio
 IDs explícitos, orden de listados, mapeo booleano, fechas ISO, valores opcionales,
 integridad, reconstrucción de vacunas, carga simple de mascotas, relaciones fijas,
 eliminaciones protegidas por FK y transacciones externas.
+Los 61 tests de Persistencia 5 verifican sus tres tablas, ambos DAO, todos los
+estados de orden y muestra, reconstrucción sin transiciones ni nuevos eventos,
+historial inmutable y orden estable, consistencia State/historial, comparación de
+prefijo, actualizaciones incrementales sin duplicados, claves foráneas, eliminación
+protegida y transacciones externas.
 
 ## Documentación
 
 - [UML editable](docs/uml/DG_TP_Veterinaria.puml) y [diagrama SVG](docs/uml/DG_TP_Veterinaria.svg).
 - [DER editable](docs/der/BD_TP_Veterinaria.dbml) y [diagrama SVG](docs/der/BD_TP_Veterinaria.svg).
 
+La fuente UML incluye los DAO de Persistencia 5. Su SVG queda pendiente de
+regeneración porque PlantUML no está disponible en el entorno actual.
+
 Los diagramas también incluyen el diseño previsto para incrementos posteriores.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
 laborales se almacenan en `agenda_medica_dia`, con clave compuesta
-`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2 ni
-Persistencia 3 ni Persistencia 4.
+`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2, Persistencia 3,
+Persistencia 4 ni Persistencia 5. El DER ya representa la relación final entre
+`muestra_biologica.id_remito` y `remito_biologico.id_remito`, aunque esa FK todavía
+no está activa en el esquema SQLite parcial.
 
 ## Próximas etapas
 
-La próxima etapa potencial es Persistencia 5 para `OrdenDerivacionLaboratorio`,
-`MuestraBiologica` e `HistorialEstadoMuestra`; todavía no está implementada. Allí
-podrá comenzar la persistencia del ciclo de vida de las muestras y del patrón State.
-También permanecen pendientes el resto de la persistencia, el cierre de
-`RemitoBiologico`, la liberación de `ConservadoraIsotermica` y la revisión e
-integración final.
+La próxima etapa potencial es Persistencia 6 para `ConservadoraIsotermica`,
+`PrecintoSanitario` y `RemitoBiologico`, junto con la activación de la FK
+`muestra_biologica.id_remito -> remito_biologico.id_remito`. No está implementada.
+También permanecen pendientes la persistencia de `Envio`, `Recepcion`,
+`ResultadoAnalisis` y `ComprobanteAtencion`, el cierre de `RemitoBiologico`, la
+liberación de `ConservadoraIsotermica` y la revisión e integración final.

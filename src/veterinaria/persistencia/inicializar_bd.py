@@ -122,3 +122,43 @@ def inicializar_bd(conexion: Connection) -> None:
                 motivo VARCHAR(200)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS orden_derivacion_laboratorio (
+                id_orden INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_atencion INTEGER NOT NULL REFERENCES atencion(id_atencion),
+                fecha_emision TEXT NOT NULL,
+                estudio_solicitado VARCHAR(200) NOT NULL,
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'PENDIENTE', 'EN_PROCESO', 'COMPLETADA', 'CANCELADA'
+                )),
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS muestra_biologica (
+                id_muestra INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_orden INTEGER NOT NULL
+                    REFERENCES orden_derivacion_laboratorio(id_orden),
+                id_remito INTEGER,
+                tipo_muestra VARCHAR(80) NOT NULL,
+                fecha_extraccion TEXT NOT NULL,
+                estado_actual TEXT NOT NULL CHECK (estado_actual IN (
+                    'EXTRAIDA', 'EMPAQUETADA', 'EN_TRANSITO',
+                    'RECIBIDA', 'ANALIZADA', 'RECHAZADA'
+                )),
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historial_estado_muestra (
+                id_historial INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_muestra INTEGER NOT NULL
+                    REFERENCES muestra_biologica(id_muestra),
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'EXTRAIDA', 'EMPAQUETADA', 'EN_TRANSITO',
+                    'RECIBIDA', 'ANALIZADA', 'RECHAZADA'
+                )),
+                fecha_hora TEXT NOT NULL,
+                observaciones TEXT
+            )
+        """)
