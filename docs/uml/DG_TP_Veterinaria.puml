@@ -438,10 +438,10 @@ package "Reportes - Patrón Strategy" {
 
 
 ' ============================================================
-' PERSISTENCIA 1
+' PERSISTENCIA - SQLITE Y DAO
 ' ============================================================
 
-package "Persistencia 1 - SQLite y DAO" {
+package "Persistencia - SQLite y DAO" {
 
     class "sqlite3.Connection" as SQLiteConnection <<external>>
 
@@ -478,6 +478,56 @@ package "Persistencia 1 - SQLite y DAO" {
         + listar() : List<Mascota>
         + actualizar(mascota : Mascota) : bool
         + eliminar(id_mascota : int) : bool
+    }
+
+
+    class ClinicaDAO {
+        - conexion : sqlite3.Connection
+
+        + ClinicaDAO(conexion : sqlite3.Connection)
+        + crear(clinica : Clinica)
+        + obtener_por_id(id_clinica : int) : Clinica | None
+        + listar() : List<Clinica>
+        + actualizar(clinica : Clinica) : bool
+        + eliminar(id_clinica : int) : bool
+    }
+
+
+    class VeterinarioDAO {
+        - conexion : sqlite3.Connection
+
+        + VeterinarioDAO(conexion : sqlite3.Connection)
+        + crear(veterinario : Veterinario, id_clinica : int)
+        + obtener_por_id(id_veterinario : int) : Veterinario | None
+        + listar() : List<Veterinario>
+        + listar_por_clinica(id_clinica : int) : List<Veterinario>
+        + actualizar(veterinario : Veterinario, id_clinica : int) : bool
+        + eliminar(id_veterinario : int) : bool
+    }
+
+
+    class AgendaMedicaDAO {
+        - conexion : sqlite3.Connection
+
+        + AgendaMedicaDAO(conexion : sqlite3.Connection)
+        + crear(agenda : AgendaMedica, id_veterinario : int)
+        + obtener_por_veterinario(id_veterinario : int) : AgendaMedica | None
+        + actualizar(agenda : AgendaMedica, id_veterinario : int) : bool
+        + eliminar_por_veterinario(id_veterinario : int) : bool
+    }
+
+
+    class TurnoDAO {
+        - conexion : sqlite3.Connection
+        - mascota_dao : MascotaDAO
+
+        + TurnoDAO(conexion : sqlite3.Connection)
+        + crear(turno : Turno, id_veterinario : int)
+        + obtener_por_id(id_turno : int) : Turno | None
+        + listar() : List<Turno>
+        + listar_por_veterinario(id_veterinario : int) : List<Turno>
+        + actualizar(turno : Turno, id_veterinario : int) : bool
+        + eliminar(id_turno : int) : bool
     }
 }
 
@@ -595,7 +645,7 @@ GeneradorReportes --> EstrategiaReporte : utiliza >
 
 
 ' ============================================================
-' DEPENDENCIAS - PERSISTENCIA 1
+' DEPENDENCIAS - PERSISTENCIA
 ' ============================================================
 
 ClienteDAO ..> Cliente : persiste
@@ -604,11 +654,29 @@ MascotaDAO ..> Mascota : persiste
 
 MascotaDAO ..> ClienteDAO : utiliza
 
+ClinicaDAO ..> Clinica : persiste
+
+VeterinarioDAO ..> Veterinario : persiste
+
+AgendaMedicaDAO ..> AgendaMedica : persiste
+
+TurnoDAO ..> Turno : persiste
+
+TurnoDAO ..> MascotaDAO : utiliza
+
 ConexionSQLite ..> SQLiteConnection : crea
 
 ClienteDAO ..> SQLiteConnection : recibe
 
 MascotaDAO ..> SQLiteConnection : recibe
+
+ClinicaDAO ..> SQLiteConnection : recibe
+
+VeterinarioDAO ..> SQLiteConnection : recibe
+
+AgendaMedicaDAO ..> SQLiteConnection : recibe
+
+TurnoDAO ..> SQLiteConnection : recibe
 
 InicializadorBD ..> SQLiteConnection : recibe
 

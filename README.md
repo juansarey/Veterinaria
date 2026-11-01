@@ -6,8 +6,9 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Además, Persistencia 1 incorpora almacenamiento para
-`Cliente` y `Mascota`:
+en memoria y están validados. Persistencia 1 y Persistencia 2 incorporan
+almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`, `AgendaMedica`
+y `Turno`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 - Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
@@ -34,19 +35,20 @@ en memoria y están validados. Además, Persistencia 1 incorpora almacenamiento 
   atenciones y derivaciones, muestras rechazadas, vacunas pendientes y tiempos
   promedio de tránsito y procesamiento.
 
-Persistencia 1 utiliza SQLite mediante `sqlite3` y el patrón DAO. Incluye una
-conexión compartida con claves foráneas activas, SQL parametrizado y ABMC de
-`Cliente` y `Mascota`.
+La persistencia utiliza SQLite mediante `sqlite3` y el patrón DAO. Incluye una
+conexión compartida con claves foráneas activas, SQL parametrizado y control
+externo de las transacciones. Persistencia 1 cubre `Cliente` y `Mascota`;
+Persistencia 2 agrega `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 
-Resultado de la suite: **358 tests passed** (309 anteriores y 49 nuevos de
-Persistencia 1).
+Resultado de la suite: **439 tests passed** (309 de dominio y patrones, 49 de
+Persistencia 1 y 81 de Persistencia 2).
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
 rechazo por precinto roto, resultados de análisis y comprobantes de atención.
 También están implementados los dos patrones de diseño obligatorios, State y
-Strategy, y cuatro reportes no triviales. Las demás entidades todavía funcionan
-exclusivamente en memoria.
+Strategy, y cuatro reportes no triviales. Las entidades que no se enumeraron como
+persistidas todavía funcionan exclusivamente en memoria.
 
 ## Agenda y turnos
 
@@ -155,9 +157,86 @@ tests/persistencia/
     test_mascota_dao.py
 ```
 
-La inicialización crea únicamente las tablas `cliente` y `mascota` mediante
+Persistencia 1 incorporó las tablas `cliente` y `mascota` mediante
 `CREATE TABLE IF NOT EXISTS`. Los tests de persistencia utilizan bases aisladas,
 principalmente `:memory:`, y no comparten una base real entre ejecuciones.
+
+## Persistencia 2: clínica, profesionales, agenda y turnos
+
+Persistencia 2 continúa con la misma arquitectura: SQLite mediante `sqlite3`,
+DAO que reciben una conexión compartida, SQL parametrizado, claves foráneas
+activas, IDs explícitos para las entidades y transacciones controladas por el
+código que coordina la operación. La inicialización agrega las tablas `clinica`,
+`veterinario`, `agenda_medica`, `agenda_medica_dia` y `turno`.
+
+Los DAO implementan estas operaciones:
+
+- `ClinicaDAO`: `crear()`, `obtener_por_id()`, `listar()`, `actualizar()` y
+  `eliminar()`. Recupera solamente los datos propios de la clínica y no carga sus
+  veterinarios.
+- `VeterinarioDAO`: `crear(veterinario, id_clinica)`, `obtener_por_id()`,
+  `listar()`, `listar_por_clinica()`, `actualizar(veterinario, id_clinica)` y
+  `eliminar()`. `id_clinica` es contexto de persistencia; el objeto recuperado no
+  incorpora una referencia a `Clinica`, una agenda ni turnos.
+- `AgendaMedicaDAO`: `crear(agenda, id_veterinario)`,
+  `obtener_por_veterinario()`, `actualizar(agenda, id_veterinario)` y
+  `eliminar_por_veterinario()`. Administra conjuntamente `agenda_medica` y
+  `agenda_medica_dia`; no existe un DAO separado para los días.
+- `TurnoDAO`: `crear(turno, id_veterinario)`, `obtener_por_id()`, `listar()`,
+  `listar_por_veterinario()`, `actualizar(turno, id_veterinario)` y `eliminar()`.
+  Obtiene `id_mascota` desde `turno.mascota` y utiliza `MascotaDAO` al reconstruir
+  esa asociación. `id_veterinario` permanece como contexto de persistencia y no se
+  agrega una referencia desde `Turno` hacia `Veterinario`.
+
+Las relaciones del modelo de objetos continúan siendo unidireccionales:
+`Clinica -> Veterinario`, `Veterinario -> AgendaMedica`,
+`Veterinario -> Turno`, `Turno -> Mascota` y `Mascota -> Cliente`. La carga de un
+objeto por su DAO no reconstruye automáticamente las colecciones o referencias
+que pertenecen a otro agregado. No se incorporan las relaciones inversas
+`Veterinario -> Clinica`, `AgendaMedica -> Veterinario`,
+`Turno -> Veterinario` ni `Mascota -> Turno`.
+
+Las claves foráneas del modelo relacional se resuelven mediante los IDs de las
+entidades y los parámetros que reciben los DAO; no representan nuevas relaciones
+en el modelo de objetos.
+
+`agenda_medica.id_agenda` es un identificador técnico generado por SQLite y se usa
+internamente mediante `lastrowid` para asociar los días. No forma parte de
+`AgendaMedica`, cuyas instancias se consultan por `id_veterinario`. Los valores de
+`DiaSemana` se guardan mediante `dia.name`, por ejemplo `LUNES`, `MARTES` o
+`MIERCOLES`, y se reconstruyen mediante `DiaSemana[nombre]`; no se persisten sus
+valores numéricos de 0 a 6.
+
+Los valores `time` y `datetime` se guardan como texto ISO y se recuperan con
+`fromisoformat()`, conservando segundos y microsegundos. El estado del turno se
+persiste mediante el nombre de `EstadoTurno`: `PENDIENTE`, `CONFIRMADO`, `ATENDIDO`
+o `CANCELADO`. El mapper privado lo restaura directamente; la lectura desde la
+base no ejecuta una transición de negocio ni llama a `confirmar()`, `cancelar()` o
+`marcar_atendido()`.
+
+SQLite garantiza las claves primarias y foráneas, los campos `NOT NULL`, la
+matrícula única, una sola agenda por veterinario y los valores permitidos mediante
+restricciones `CHECK`. Los DAO dejan que `sqlite3.IntegrityError` se propague. Las
+reglas de horario válido, pertenencia a la agenda y superposición de turnos se
+validan en el dominio y no se atribuyen a SQLite.
+
+Ningún DAO ejecuta `commit()` ni `rollback()`. La agenda y sus días forman una
+unidad lógica que debe confirmarse o revertirse en una misma transacción externa.
+Los archivos incorporados en este incremento son:
+
+```text
+src/veterinaria/persistencia/
+    clinica_dao.py
+    veterinario_dao.py
+    agenda_medica_dao.py
+    turno_dao.py
+
+tests/persistencia/
+    test_clinica_dao.py
+    test_veterinario_dao.py
+    test_agenda_medica_dao.py
+    test_turno_dao.py
+```
 
 ## Vacunación
 
@@ -307,6 +386,10 @@ reportes, sus casos vacíos y múltiples, los promedios de tiempos y que las con
 no modifiquen el dominio. Los 49 tests de Persistencia 1 verifican conexión e
 inicialización, ABMC, reconstrucción de responsables, fechas ISO, SQL parametrizado,
 restricciones de integridad, claves foráneas y control externo de transacciones.
+Los 81 tests de Persistencia 2 verifican la inicialización de sus cinco tablas, el
+ABMC de clínicas, veterinarios, agendas y turnos, los filtros por clínica o
+veterinario, las conversiones ISO, la restauración de enums, la carga independiente
+de asociaciones, las restricciones de integridad y las transacciones externas.
 
 ## Documentación
 
@@ -315,12 +398,13 @@ restricciones de integridad, claves foráneas y control externo de transacciones
 
 Los diagramas también incluyen el diseño previsto para incrementos posteriores.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
-de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días laborales
-se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
+de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
+laborales se almacenan en `agenda_medica_dia`, con clave compuesta
+`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2.
 
 ## Próximas etapas
 
-La próxima etapa prevista es Persistencia 2 para `Clinica`, `Veterinario`,
-`AgendaMedica` y `Turno`. Todavía permanecen pendientes el resto de la persistencia,
-el cierre de `RemitoBiologico`, la liberación de `ConservadoraIsotermica` y la
-revisión e integración final.
+La próxima etapa potencial es Persistencia 3 para `HistoriaClinica` y `Atencion`;
+todavía no está implementada. También permanecen pendientes el resto de la
+persistencia, el cierre de `RemitoBiologico`, la liberación de
+`ConservadoraIsotermica` y la revisión e integración final.

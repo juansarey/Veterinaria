@@ -6,14 +6,22 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_dos_tablas_del_incremento():
+def test_crea_solamente_las_tablas_de_persistencia_1_y_2():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
             SELECT name FROM sqlite_master
             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
         """).fetchall()
-        assert {fila["name"] for fila in tablas} == {"cliente", "mascota"}
+        assert {fila["name"] for fila in tablas} == {
+            "cliente",
+            "mascota",
+            "clinica",
+            "veterinario",
+            "agenda_medica",
+            "agenda_medica_dia",
+            "turno",
+        }
 
 
 def test_inicializar_dos_veces_conserva_datos(
@@ -44,6 +52,25 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
     assert claves[0]["on_update"] == "NO ACTION"
 
 
+@pytest.mark.parametrize("tabla, referencias", [
+    ("veterinario", {("id_clinica", "clinica", "id_clinica")}),
+    ("agenda_medica", {("id_veterinario", "veterinario", "id_veterinario")}),
+    ("agenda_medica_dia", {("id_agenda", "agenda_medica", "id_agenda")}),
+    ("turno", {
+        ("id_mascota", "mascota", "id_mascota"),
+        ("id_veterinario", "veterinario", "id_veterinario"),
+    }),
+])
+def test_fk_de_persistencia_2_sin_cascadas(conexion, tabla, referencias):
+    claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
+    assert {
+        (fila["from"], fila["table"], fila["to"])
+        for fila in claves
+    } == referencias
+    assert all(fila["on_delete"] == "NO ACTION" for fila in claves)
+    assert all(fila["on_update"] == "NO ACTION" for fila in claves)
+
+
 @pytest.mark.parametrize("tabla, esperado", [
     ("cliente", [
         ("id_cliente", "INTEGER", 0, 1),
@@ -61,6 +88,39 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
         ("raza", "VARCHAR(80)", 0, 0),
         ("fecha_nacimiento", "TEXT", 0, 0),
         ("sexo", "VARCHAR(20)", 0, 0),
+    ]),
+    ("clinica", [
+        ("id_clinica", "INTEGER", 0, 1),
+        ("nombre", "VARCHAR(100)", 1, 0),
+        ("direccion", "VARCHAR(200)", 1, 0),
+        ("telefono", "VARCHAR(30)", 0, 0),
+    ]),
+    ("veterinario", [
+        ("id_veterinario", "INTEGER", 0, 1),
+        ("id_clinica", "INTEGER", 1, 0),
+        ("nombre", "VARCHAR(80)", 1, 0),
+        ("apellido", "VARCHAR(80)", 1, 0),
+        ("matricula", "VARCHAR(30)", 1, 0),
+        ("especialidad", "VARCHAR(100)", 0, 0),
+    ]),
+    ("agenda_medica", [
+        ("id_agenda", "INTEGER", 0, 1),
+        ("id_veterinario", "INTEGER", 1, 0),
+        ("hora_desde", "TEXT", 1, 0),
+        ("hora_hasta", "TEXT", 1, 0),
+    ]),
+    ("agenda_medica_dia", [
+        ("id_agenda", "INTEGER", 1, 1),
+        ("dia", "TEXT", 1, 2),
+    ]),
+    ("turno", [
+        ("id_turno", "INTEGER", 0, 1),
+        ("id_mascota", "INTEGER", 1, 0),
+        ("id_veterinario", "INTEGER", 1, 0),
+        ("fecha_hora_inicio", "TEXT", 1, 0),
+        ("fecha_hora_fin", "TEXT", 1, 0),
+        ("estado", "TEXT", 1, 0),
+        ("motivo", "VARCHAR(200)", 0, 0),
     ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):
