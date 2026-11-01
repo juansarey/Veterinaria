@@ -4,14 +4,18 @@ import pytest
 
 from veterinaria.dominio.clinica.cliente import Cliente
 from veterinaria.dominio.clinica.clinica import Clinica
+from veterinaria.dominio.clinica.atencion import Atencion, TipoAtencion
+from veterinaria.dominio.clinica.historia_clinica import HistoriaClinica
 from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
 from veterinaria.dominio.clinica.turno import Turno
 from veterinaria.dominio.clinica.veterinario import Veterinario
 from veterinaria.persistencia.agenda_medica_dao import AgendaMedicaDAO
+from veterinaria.persistencia.atencion_dao import AtencionDAO
 from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
 from veterinaria.persistencia.conexion import abrir_conexion
+from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 from veterinaria.persistencia.mascota_dao import MascotaDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
@@ -59,6 +63,16 @@ def turno_dao(conexion):
 
 
 @pytest.fixture
+def historia_clinica_dao(conexion):
+    return HistoriaClinicaDAO(conexion)
+
+
+@pytest.fixture
+def atencion_dao(conexion):
+    return AtencionDAO(conexion)
+
+
+@pytest.fixture
 def cliente():
     return Cliente(10, "Laura", "García", "30111222", "351-123456", "laura@test.com")
 
@@ -95,4 +109,26 @@ def turno(mascota):
         datetime(2026, 11, 2, 10, 30, 20, 654321),
         mascota,
         "Control anual",
+    )
+
+
+@pytest.fixture
+def historia_clinica():
+    return HistoriaClinica(
+        60,
+        date(2026, 1, 2),
+        "Sin antecedentes",
+    )
+
+
+@pytest.fixture
+def atencion(veterinario):
+    return Atencion(
+        70,
+        datetime(2026, 11, 3, 10, 20, 30, 456789),
+        TipoAtencion.CONSULTA,
+        "Control general",
+        veterinario,
+        "Paciente estable",
+        "Repetir control anual",
     )

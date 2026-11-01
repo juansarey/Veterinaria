@@ -6,7 +6,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_y_2():
+def test_crea_solamente_las_tablas_de_persistencia_1_2_y_3():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -16,8 +16,10 @@ def test_crea_solamente_las_tablas_de_persistencia_1_y_2():
         assert {fila["name"] for fila in tablas} == {
             "cliente",
             "mascota",
+            "historia_clinica",
             "clinica",
             "veterinario",
+            "atencion",
             "agenda_medica",
             "agenda_medica_dia",
             "turno",
@@ -60,8 +62,15 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
         ("id_mascota", "mascota", "id_mascota"),
         ("id_veterinario", "veterinario", "id_veterinario"),
     }),
+    ("historia_clinica", {
+        ("id_mascota", "mascota", "id_mascota"),
+    }),
+    ("atencion", {
+        ("id_historia", "historia_clinica", "id_historia"),
+        ("id_veterinario", "veterinario", "id_veterinario"),
+    }),
 ])
-def test_fk_de_persistencia_2_sin_cascadas(conexion, tabla, referencias):
+def test_fk_de_persistencia_2_y_3_sin_cascadas(conexion, tabla, referencias):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
     assert {
         (fila["from"], fila["table"], fila["to"])
@@ -121,6 +130,22 @@ def test_fk_de_persistencia_2_sin_cascadas(conexion, tabla, referencias):
         ("fecha_hora_fin", "TEXT", 1, 0),
         ("estado", "TEXT", 1, 0),
         ("motivo", "VARCHAR(200)", 0, 0),
+    ]),
+    ("historia_clinica", [
+        ("id_historia", "INTEGER", 0, 1),
+        ("id_mascota", "INTEGER", 1, 0),
+        ("fecha_apertura", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("atencion", [
+        ("id_atencion", "INTEGER", 0, 1),
+        ("id_historia", "INTEGER", 1, 0),
+        ("id_veterinario", "INTEGER", 1, 0),
+        ("fecha_hora", "TEXT", 1, 0),
+        ("tipo", "TEXT", 1, 0),
+        ("motivo", "VARCHAR(200)", 0, 0),
+        ("diagnostico", "TEXT", 0, 0),
+        ("observaciones", "TEXT", 0, 0),
     ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):

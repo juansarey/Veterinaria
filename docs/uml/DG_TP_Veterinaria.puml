@@ -529,6 +529,32 @@ package "Persistencia - SQLite y DAO" {
         + actualizar(turno : Turno, id_veterinario : int) : bool
         + eliminar(id_turno : int) : bool
     }
+
+
+    class HistoriaClinicaDAO {
+        - conexion : sqlite3.Connection
+
+        + HistoriaClinicaDAO(conexion : sqlite3.Connection)
+        + crear(historia : HistoriaClinica, id_mascota : int)
+        + obtener_por_id(id_historia : int) : HistoriaClinica | None
+        + obtener_por_mascota(id_mascota : int) : HistoriaClinica | None
+        + actualizar(historia : HistoriaClinica) : bool
+        + eliminar(id_historia : int) : bool
+    }
+
+
+    class AtencionDAO {
+        - conexion : sqlite3.Connection
+        - veterinario_dao : VeterinarioDAO
+
+        + AtencionDAO(conexion : sqlite3.Connection)
+        + crear(atencion : Atencion, id_historia : int)
+        + obtener_por_id(id_atencion : int) : Atencion | None
+        + listar() : List<Atencion>
+        + listar_por_historia(id_historia : int) : List<Atencion>
+        + actualizar(atencion : Atencion) : bool
+        + eliminar(id_atencion : int) : bool
+    }
 }
 
 
@@ -664,6 +690,12 @@ TurnoDAO ..> Turno : persiste
 
 TurnoDAO ..> MascotaDAO : utiliza
 
+HistoriaClinicaDAO ..> HistoriaClinica : persiste
+
+AtencionDAO ..> Atencion : persiste
+
+AtencionDAO ..> VeterinarioDAO : utiliza
+
 ConexionSQLite ..> SQLiteConnection : crea
 
 ClienteDAO ..> SQLiteConnection : recibe
@@ -677,6 +709,10 @@ VeterinarioDAO ..> SQLiteConnection : recibe
 AgendaMedicaDAO ..> SQLiteConnection : recibe
 
 TurnoDAO ..> SQLiteConnection : recibe
+
+HistoriaClinicaDAO ..> SQLiteConnection : recibe
+
+AtencionDAO ..> SQLiteConnection : recibe
 
 InicializadorBD ..> SQLiteConnection : recibe
 

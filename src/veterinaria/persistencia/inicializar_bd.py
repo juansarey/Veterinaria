@@ -29,6 +29,15 @@ def inicializar_bd(conexion: Connection) -> None:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historia_clinica (
+                id_historia INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_mascota INTEGER NOT NULL UNIQUE
+                    REFERENCES mascota(id_mascota),
+                fecha_apertura TEXT NOT NULL,
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS clinica (
                 id_clinica INTEGER PRIMARY KEY AUTOINCREMENT,
                 nombre VARCHAR(100) NOT NULL,
@@ -44,6 +53,22 @@ def inicializar_bd(conexion: Connection) -> None:
                 apellido VARCHAR(80) NOT NULL,
                 matricula VARCHAR(30) NOT NULL UNIQUE,
                 especialidad VARCHAR(100)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS atencion (
+                id_atencion INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_historia INTEGER NOT NULL
+                    REFERENCES historia_clinica(id_historia),
+                id_veterinario INTEGER NOT NULL
+                    REFERENCES veterinario(id_veterinario),
+                fecha_hora TEXT NOT NULL,
+                tipo TEXT NOT NULL CHECK (tipo IN (
+                    'CONSULTA', 'CONTROL', 'URGENCIA'
+                )),
+                motivo VARCHAR(200),
+                diagnostico TEXT,
+                observaciones TEXT
             )
         """)
         cursor.execute("""
