@@ -135,11 +135,34 @@ def inicializar_bd(conexion: Connection) -> None:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conservadora_isotermica (
+                id_conservadora INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo VARCHAR(50) NOT NULL UNIQUE,
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'DISPONIBLE', 'EN_USO'
+                ))
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS remito_biologico (
+                id_remito INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_conservadora INTEGER NOT NULL
+                    REFERENCES conservadora_isotermica(id_conservadora),
+                id_clinica_origen INTEGER NOT NULL
+                    REFERENCES clinica(id_clinica),
+                fecha_emision TEXT NOT NULL,
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'GENERADO', 'DESPACHADO', 'RECIBIDO', 'CERRADO'
+                )),
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS muestra_biologica (
                 id_muestra INTEGER PRIMARY KEY AUTOINCREMENT,
                 id_orden INTEGER NOT NULL
                     REFERENCES orden_derivacion_laboratorio(id_orden),
-                id_remito INTEGER,
+                id_remito INTEGER REFERENCES remito_biologico(id_remito),
                 tipo_muestra VARCHAR(80) NOT NULL,
                 fecha_extraccion TEXT NOT NULL,
                 estado_actual TEXT NOT NULL CHECK (estado_actual IN (
@@ -147,6 +170,17 @@ def inicializar_bd(conexion: Connection) -> None:
                     'RECIBIDA', 'ANALIZADA', 'RECHAZADA'
                 )),
                 observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS precinto_sanitario (
+                id_precinto INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_remito INTEGER NOT NULL UNIQUE
+                    REFERENCES remito_biologico(id_remito),
+                codigo VARCHAR(50) NOT NULL UNIQUE,
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'INTACTO', 'ROTO'
+                ))
             )
         """)
         cursor.execute("""

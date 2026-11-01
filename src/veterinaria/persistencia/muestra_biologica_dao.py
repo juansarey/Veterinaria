@@ -90,6 +90,25 @@ class MuestraBiologicaDAO:
             ]
         return muestras
 
+    def listar_por_remito(self, id_remito: int) -> list[MuestraBiologica]:
+        with closing(self._conexion.cursor()) as cursor:
+            cursor.execute("""
+                SELECT id_muestra, tipo_muestra, fecha_extraccion,
+                       estado_actual, observaciones
+                FROM muestra_biologica
+                WHERE id_remito = ?
+                ORDER BY id_muestra
+            """, (id_remito,))
+            filas = cursor.fetchall()
+            muestras = [
+                self._desde_fila(
+                    fila,
+                    self._obtener_historial(cursor, fila["id_muestra"]),
+                )
+                for fila in filas
+            ]
+        return muestras
+
     def actualizar(self, muestra: MuestraBiologica) -> bool:
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""

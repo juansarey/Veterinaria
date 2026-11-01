@@ -601,7 +601,47 @@ package "Persistencia - SQLite y DAO" {
         + crear(muestra : MuestraBiologica, id_orden : int)
         + obtener_por_id(id_muestra : int) : MuestraBiologica | None
         + listar_por_orden(id_orden : int) : List<MuestraBiologica>
+        + listar_por_remito(id_remito : int) : List<MuestraBiologica>
         + actualizar(muestra : MuestraBiologica) : bool
+    }
+
+
+    class ConservadoraIsotermicaDAO {
+        - conexion : sqlite3.Connection
+
+        + ConservadoraIsotermicaDAO(conexion : sqlite3.Connection)
+        + crear(conservadora : ConservadoraIsotermica)
+        + obtener_por_id(id_conservadora : int) : ConservadoraIsotermica | None
+        + listar() : List<ConservadoraIsotermica>
+        + actualizar(conservadora : ConservadoraIsotermica) : bool
+        + eliminar(id_conservadora : int) : bool
+    }
+
+
+    class PrecintoSanitarioDAO {
+        - conexion : sqlite3.Connection
+
+        + PrecintoSanitarioDAO(conexion : sqlite3.Connection)
+        + crear(precinto : PrecintoSanitario, id_remito : int)
+        + obtener_por_id(id_precinto : int) : PrecintoSanitario | None
+        + obtener_por_remito(id_remito : int) : PrecintoSanitario | None
+        + actualizar(precinto : PrecintoSanitario) : bool
+    }
+
+
+    class RemitoBiologicoDAO {
+        - conexion : sqlite3.Connection
+        - clinica_dao : ClinicaDAO
+        - conservadora_dao : ConservadoraIsotermicaDAO
+        - precinto_dao : PrecintoSanitarioDAO
+        - muestra_dao : MuestraBiologicaDAO
+
+        + RemitoBiologicoDAO(conexion : sqlite3.Connection)
+        + crear(remito : RemitoBiologico)
+        + obtener_por_id(id_remito : int) : RemitoBiologico | None
+        + listar() : List<RemitoBiologico>
+        + actualizar(remito : RemitoBiologico) : bool
+        + guardar_muestra_asociada(remito : RemitoBiologico, muestra : MuestraBiologica) : bool
     }
 }
 
@@ -768,6 +808,20 @@ MuestraBiologicaDAO ..> EstadoAnalizada : reconstruye
 
 MuestraBiologicaDAO ..> EstadoRechazada : reconstruye
 
+ConservadoraIsotermicaDAO ..> ConservadoraIsotermica : persiste
+
+PrecintoSanitarioDAO ..> PrecintoSanitario : persiste
+
+RemitoBiologicoDAO ..> RemitoBiologico : persiste
+
+RemitoBiologicoDAO ..> ClinicaDAO : utiliza
+
+RemitoBiologicoDAO ..> ConservadoraIsotermicaDAO : utiliza
+
+RemitoBiologicoDAO ..> PrecintoSanitarioDAO : utiliza
+
+RemitoBiologicoDAO ..> MuestraBiologicaDAO : utiliza
+
 ConexionSQLite ..> SQLiteConnection : crea
 
 ClienteDAO ..> SQLiteConnection : recibe
@@ -793,6 +847,12 @@ AplicacionVacunaDAO ..> SQLiteConnection : recibe
 OrdenDerivacionLaboratorioDAO ..> SQLiteConnection : recibe
 
 MuestraBiologicaDAO ..> SQLiteConnection : recibe
+
+ConservadoraIsotermicaDAO ..> SQLiteConnection : recibe
+
+PrecintoSanitarioDAO ..> SQLiteConnection : recibe
+
+RemitoBiologicoDAO ..> SQLiteConnection : recibe
 
 InicializadorBD ..> SQLiteConnection : recibe
 

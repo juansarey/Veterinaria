@@ -6,11 +6,12 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1, Persistencia 2, Persistencia 3,
-Persistencia 4 y Persistencia 5 incorporan almacenamiento para `Cliente`,
-`Mascota`, `Clinica`, `Veterinario`, `AgendaMedica`, `Turno`, `HistoriaClinica`,
-`Atencion`, `Vacuna`, `AplicacionVacuna`, `OrdenDerivacionLaboratorio` y
-`MuestraBiologica`. El historial de estados se persiste como parte interna de
+en memoria y están validados. Persistencia 1 a Persistencia 6 incorporan
+almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`,
+`AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna`,
+`AplicacionVacuna`, `OrdenDerivacionLaboratorio`, `MuestraBiologica`,
+`HistorialEstadoMuestra`, `ConservadoraIsotermica`, `PrecintoSanitario` y
+`RemitoBiologico`. El historial de estados se persiste como parte interna de
 `MuestraBiologicaDAO`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -44,11 +45,13 @@ externo de las transacciones. Persistencia 1 cubre `Cliente` y `Mascota`;
 Persistencia 2 agrega `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`, y
 Persistencia 3 incorpora `HistoriaClinica` y `Atencion`; Persistencia 4 agrega
 `Vacuna` y `AplicacionVacuna`; Persistencia 5 incorpora
-`OrdenDerivacionLaboratorio`, `MuestraBiologica` y su historial de estados.
+`OrdenDerivacionLaboratorio`, `MuestraBiologica` y su historial de estados; y
+Persistencia 6 agrega `ConservadoraIsotermica`, `PrecintoSanitario` y
+`RemitoBiologico`.
 
-Resultado de la suite: **585 tests passed** (309 de dominio y patrones, 49 de
-Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3, 42 de Persistencia 4
-y 61 de Persistencia 5).
+Resultado de la suite: **648 tests passed** (309 de dominio y patrones, 49 de
+Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3, 42 de Persistencia 4,
+61 de Persistencia 5 y 63 de Persistencia 6).
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
@@ -428,13 +431,9 @@ insertan solamente los eventos nuevos. No se borra ni se reconstruye el historia
 anterior. Una segunda llamada a `actualizar()` sin transiciones nuevas no agrega
 registros duplicados.
 
-`muestra_biologica.id_remito` existe como columna nullable y permanece siempre en
-`NULL` durante Persistencia 5. Todavía no se asigna un `RemitoBiologico` ni existe
-una FK activa hacia `remito_biologico`, porque esa tabla no forma parte del esquema
-SQLite implementado. El DER conserva la relación final esperada. Cuando
-Persistencia 6 incorpore la tabla, el inicializador deberá usar un orden de creación
-compatible y declarar la FK
-`muestra_biologica.id_remito -> remito_biologico.id_remito`.
+En el esquema final para bases nuevas, `muestra_biologica.id_remito` es nullable y
+referencia `remito_biologico.id_remito`. Persistencia 6 utiliza esa FK para asociar
+las muestras con su remito sin agregar una referencia inversa al dominio.
 
 No se agregaron cascadas. Una orden sin muestras puede eliminarse; una orden con
 muestras queda protegida por la FK. `MuestraBiologicaDAO` no expone eliminación y
@@ -460,6 +459,104 @@ tests/persistencia/
     test_orden_derivacion_laboratorio_dao.py
     test_muestra_biologica_dao.py
 ```
+
+## Persistencia 6: conservadoras, precintos y remitos
+
+Persistencia 6 agrega las tablas `conservadora_isotermica`, `remito_biologico` y
+`precinto_sanitario`. El esquema final de una base nueva también declara la clave
+foránea nullable:
+
+```text
+muestra_biologica.id_remito
+    -> remito_biologico.id_remito
+```
+
+La FK acepta `NULL` y remitos existentes, rechaza IDs de remitos inexistentes y no
+utiliza `ON DELETE CASCADE`. Es una relación del modelo relacional: cada
+`MuestraBiologica` continúa sin conocer al `RemitoBiologico` en el modelo de
+objetos.
+
+Los DAO implementados son:
+
+- `ConservadoraIsotermicaDAO`: `crear()`, `obtener_por_id()`, `listar()`,
+  `actualizar()` y `eliminar()`. Persiste los estados `DISPONIBLE` y `EN_USO`; el
+  código es único. La reconstrucción usa el constructor normal y luego restaura el
+  estado persistido sin ejecutar `marcar_en_uso()` ni `liberar()`. No existe una
+  liberación automática.
+- `PrecintoSanitarioDAO`: `crear(precinto, id_remito)`, `obtener_por_id()`,
+  `obtener_por_remito()` y `actualizar()`. Persiste `INTACTO` y `ROTO`; tanto el
+  código como `id_remito` son únicos, por lo que cada remito admite como máximo un
+  precinto persistido. La actualización modifica código y estado, pero no cambia
+  `id_remito`. La reconstrucción no ejecuta `marcar_roto()` y el DAO no expone una
+  eliminación pública. Un precinto `ROTO` no rechaza automáticamente las muestras;
+  ese procesamiento corresponde a `Recepcion`.
+- `RemitoBiologicoDAO`: `crear()`, `obtener_por_id()`, `listar()`, `actualizar()` y
+  `guardar_muestra_asociada()`. Persiste clínica de origen, conservadora, fecha de
+  emisión, estado y observaciones; al recuperar incorpora el precinto opcional y la
+  colección de muestras. Los estados persistibles son `GENERADO`, `DESPACHADO`,
+  `RECIBIDO` y `CERRADO`. `CERRADO` forma parte del enum persistible, aunque el
+  dominio todavía no ofrece una operación `cerrar()`.
+
+Al crear un remito, el DAO persiste también el estado `EN_USO` que la conservadora
+ya adquirió en el dominio. La lectura del remito no usa su constructor normal,
+porque ese constructor reserva la conservadora y modifica otro objeto. El mapper
+privado utiliza exclusivamente:
+
+```python
+RemitoBiologico.__new__(RemitoBiologico)
+```
+
+Luego restaura identidad, clínica, conservadora, fecha, observaciones, estado,
+precinto y muestras. La recuperación no ejecuta el constructor normal,
+`agregar_muestra()`, `asignar_precinto()`, `despachar()`, `marcar_recibido()` ni
+`conservadora.marcar_en_uso()`.
+
+`MuestraBiologicaDAO.listar_por_remito(id_remito)` consulta
+`muestra_biologica.id_remito` y reconstruye las muestras pertenecientes al remito.
+La navegación del dominio permanece en un solo sentido:
+`RemitoBiologico -> Clinica`, `RemitoBiologico -> ConservadoraIsotermica`,
+`RemitoBiologico -> PrecintoSanitario` y
+`RemitoBiologico -> MuestraBiologica`. No se agregan referencias inversas desde
+esas entidades hacia el remito.
+
+La asociación persistente se realiza después de que el dominio ejecuta
+`remito.agregar_muestra()`. Esa operación de dominio empaqueta la muestra, cambia
+su State, agrega el historial y la incorpora al remito. Luego
+`guardar_muestra_asociada()` actualiza el estado de la muestra, persiste los nuevos
+registros históricos y establece `id_remito`. El DAO no vuelve a ejecutar el
+empaquetado.
+
+La asociación es idempotente cuando la muestra ya pertenece al mismo remito:
+actualiza sus datos sin duplicar historial ni ejecutar nuevamente `empaquetar()`.
+La reasignación a otro remito se rechaza; `id_remito` no se trata como una FK
+libremente editable.
+
+Ningún DAO ejecuta `commit()` ni `rollback()`. La creación del remito junto con la
+persistencia de la conservadora `EN_USO`, la asociación de muestra con su estado e
+historial y la creación del precinto pueden participar en una transacción externa
+compartida.
+
+No se incorporó infraestructura de migraciones ni versionado de esquema. El
+inicializador genera el esquema correcto para bases nuevas y las bases parciales
+utilizadas durante el desarrollo pueden recrearse.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    conservadora_isotermica_dao.py
+    precinto_sanitario_dao.py
+    remito_biologico_dao.py
+
+tests/persistencia/
+    test_conservadora_isotermica_dao.py
+    test_precinto_sanitario_dao.py
+    test_remito_biologico_dao.py
+```
+
+También se actualizaron `inicializar_bd.py`, `muestra_biologica_dao.py`,
+`tests/persistencia/conftest.py`, `test_inicializar_bd.py` y
+`test_muestra_biologica_dao.py`. No se agregó ningún `__init__.py`.
 
 ## Vacunación
 
@@ -626,29 +723,33 @@ estados de orden y muestra, reconstrucción sin transiciones ni nuevos eventos,
 historial inmutable y orden estable, consistencia State/historial, comparación de
 prefijo, actualizaciones incrementales sin duplicados, claves foráneas, eliminación
 protegida y transacciones externas.
+Los 63 tests de Persistencia 6 verifican sus tres tablas y DAO, estados y
+restricciones de integridad, la FK final nullable de muestras, reconstrucción sin
+operaciones de negocio, carga de clínica, conservadora, precinto y muestras,
+asociación idempotente sin duplicar historial, rechazo de reasignaciones y control
+externo de transacciones.
 
 ## Documentación
 
 - [UML editable](docs/uml/DG_TP_Veterinaria.puml) y [diagrama SVG](docs/uml/DG_TP_Veterinaria.svg).
 - [DER editable](docs/der/BD_TP_Veterinaria.dbml) y [diagrama SVG](docs/der/BD_TP_Veterinaria.svg).
 
-La fuente UML incluye los DAO de Persistencia 5. Su SVG queda pendiente de
+La fuente UML incluye los DAO de Persistencia 6. Su SVG queda pendiente de
 regeneración porque PlantUML no está disponible en el entorno actual.
 
 Los diagramas también incluyen el diseño previsto para incrementos posteriores.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
 laborales se almacenan en `agenda_medica_dia`, con clave compuesta
-`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2, Persistencia 3,
-Persistencia 4 ni Persistencia 5. El DER ya representa la relación final entre
-`muestra_biologica.id_remito` y `remito_biologico.id_remito`, aunque esa FK todavía
-no está activa en el esquema SQLite parcial.
+`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2 a Persistencia
+6. Ya representa la relación final entre `muestra_biologica.id_remito` y
+`remito_biologico.id_remito`, que Persistencia 6 incorporó al esquema SQLite para
+bases nuevas.
 
 ## Próximas etapas
 
-La próxima etapa potencial es Persistencia 6 para `ConservadoraIsotermica`,
-`PrecintoSanitario` y `RemitoBiologico`, junto con la activación de la FK
-`muestra_biologica.id_remito -> remito_biologico.id_remito`. No está implementada.
-También permanecen pendientes la persistencia de `Envio`, `Recepcion`,
+La próxima etapa es Persistencia 7 para `Envio` y `Recepcion`, que completará la
+cadena de custodia persistente desde el despacho hasta la recepción. No está
+implementada. También permanecen pendientes la persistencia de
 `ResultadoAnalisis` y `ComprobanteAtencion`, el cierre de `RemitoBiologico`, la
 liberación de `ConservadoraIsotermica` y la revisión e integración final.

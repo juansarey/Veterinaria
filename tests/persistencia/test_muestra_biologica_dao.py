@@ -115,6 +115,7 @@ def test_obtener_inexistente_y_listar_orden_inexistente(
 ):
     assert muestra_biologica_dao.obtener_por_id(999) is None
     assert muestra_biologica_dao.listar_por_orden(999) == []
+    assert muestra_biologica_dao.listar_por_remito(999) == []
 
 
 def test_listar_por_orden_ordena_por_id(

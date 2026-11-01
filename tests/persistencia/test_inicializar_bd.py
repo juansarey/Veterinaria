@@ -6,7 +6,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_2_3_4_y_5():
+def test_crea_solamente_las_tablas_de_persistencia_1_a_6():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -28,6 +28,9 @@ def test_crea_solamente_las_tablas_de_persistencia_1_2_3_4_y_5():
             "orden_derivacion_laboratorio",
             "muestra_biologica",
             "historial_estado_muestra",
+            "conservadora_isotermica",
+            "remito_biologico",
+            "precinto_sanitario",
         }
 
 
@@ -40,6 +43,16 @@ def test_inicializar_dos_veces_conserva_datos(
     inicializar_bd(conexion)
     assert cliente_dao.obtener_por_id(10).nombre == cliente.nombre
     assert mascota_dao.obtener_por_id(20).nombre == mascota.nombre
+
+
+def test_inicializar_dos_veces_conserva_datos_de_persistencia_6(
+    conexion, conservadora_isotermica_dao, conservadora_isotermica
+):
+    conservadora_isotermica_dao.crear(conservadora_isotermica)
+    conexion.commit()
+    inicializar_bd(conexion)
+    recuperada = conservadora_isotermica_dao.obtener_por_id(120)
+    assert recuperada.codigo == "CONS-120"
 
 
 def test_inicializacion_no_confirma_transaccion_pendiente(conexion, cliente_dao, cliente):
@@ -83,12 +96,20 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
     }),
     ("muestra_biologica", {
         ("id_orden", "orden_derivacion_laboratorio", "id_orden"),
+        ("id_remito", "remito_biologico", "id_remito"),
     }),
     ("historial_estado_muestra", {
         ("id_muestra", "muestra_biologica", "id_muestra"),
     }),
+    ("remito_biologico", {
+        ("id_conservadora", "conservadora_isotermica", "id_conservadora"),
+        ("id_clinica_origen", "clinica", "id_clinica"),
+    }),
+    ("precinto_sanitario", {
+        ("id_remito", "remito_biologico", "id_remito"),
+    }),
 ])
-def test_fk_de_persistencia_2_3_4_y_5_sin_cascadas(
+def test_fk_de_persistencia_2_a_6_sin_cascadas(
     conexion, tabla, referencias
 ):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
@@ -203,6 +224,25 @@ def test_fk_de_persistencia_2_3_4_y_5_sin_cascadas(
         ("estado", "TEXT", 1, 0),
         ("fecha_hora", "TEXT", 1, 0),
         ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("conservadora_isotermica", [
+        ("id_conservadora", "INTEGER", 0, 1),
+        ("codigo", "VARCHAR(50)", 1, 0),
+        ("estado", "TEXT", 1, 0),
+    ]),
+    ("remito_biologico", [
+        ("id_remito", "INTEGER", 0, 1),
+        ("id_conservadora", "INTEGER", 1, 0),
+        ("id_clinica_origen", "INTEGER", 1, 0),
+        ("fecha_emision", "TEXT", 1, 0),
+        ("estado", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("precinto_sanitario", [
+        ("id_precinto", "INTEGER", 0, 1),
+        ("id_remito", "INTEGER", 1, 0),
+        ("codigo", "VARCHAR(50)", 1, 0),
+        ("estado", "TEXT", 1, 0),
     ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):

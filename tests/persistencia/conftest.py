@@ -14,6 +14,11 @@ from veterinaria.dominio.laboratorio.muestra_biologica import MuestraBiologica
 from veterinaria.dominio.laboratorio.orden_derivacion_laboratorio import (
     OrdenDerivacionLaboratorio,
 )
+from veterinaria.dominio.transporte.conservadora_isotermica import (
+    ConservadoraIsotermica,
+)
+from veterinaria.dominio.transporte.precinto_sanitario import PrecintoSanitario
+from veterinaria.dominio.transporte.remito_biologico import RemitoBiologico
 from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
 from veterinaria.dominio.vacunacion.vacuna import Vacuna
 from veterinaria.persistencia.agenda_medica_dao import AgendaMedicaDAO
@@ -22,6 +27,9 @@ from veterinaria.persistencia.atencion_dao import AtencionDAO
 from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
 from veterinaria.persistencia.conexion import abrir_conexion
+from veterinaria.persistencia.conservadora_isotermica_dao import (
+    ConservadoraIsotermicaDAO,
+)
 from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 from veterinaria.persistencia.mascota_dao import MascotaDAO
@@ -29,6 +37,8 @@ from veterinaria.persistencia.muestra_biologica_dao import MuestraBiologicaDAO
 from veterinaria.persistencia.orden_derivacion_laboratorio_dao import (
     OrdenDerivacionLaboratorioDAO,
 )
+from veterinaria.persistencia.precinto_sanitario_dao import PrecintoSanitarioDAO
+from veterinaria.persistencia.remito_biologico_dao import RemitoBiologicoDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
 from veterinaria.persistencia.vacuna_dao import VacunaDAO
 from veterinaria.persistencia.veterinario_dao import VeterinarioDAO
@@ -102,6 +112,21 @@ def orden_derivacion_laboratorio_dao(conexion):
 @pytest.fixture
 def muestra_biologica_dao(conexion):
     return MuestraBiologicaDAO(conexion)
+
+
+@pytest.fixture
+def conservadora_isotermica_dao(conexion):
+    return ConservadoraIsotermicaDAO(conexion)
+
+
+@pytest.fixture
+def precinto_sanitario_dao(conexion):
+    return PrecintoSanitarioDAO(conexion)
+
+
+@pytest.fixture
+def remito_biologico_dao(conexion):
+    return RemitoBiologicoDAO(conexion)
 
 
 @pytest.fixture
@@ -198,4 +223,25 @@ def muestra_biologica():
         "Sangre",
         datetime(2026, 11, 3, 11, 45, 12, 654321),
         "Tubo con EDTA",
+    )
+
+
+@pytest.fixture
+def conservadora_isotermica():
+    return ConservadoraIsotermica(120, "CONS-120")
+
+
+@pytest.fixture
+def precinto_sanitario():
+    return PrecintoSanitario(140, "PREC-140")
+
+
+@pytest.fixture
+def remito_biologico(clinica, conservadora_isotermica):
+    return RemitoBiologico(
+        130,
+        clinica,
+        conservadora_isotermica,
+        datetime(2026, 11, 3, 12, 30, 45, 123456),
+        "Traslado al laboratorio central",
     )
