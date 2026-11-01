@@ -438,6 +438,51 @@ package "Reportes - Patrón Strategy" {
 
 
 ' ============================================================
+' PERSISTENCIA 1
+' ============================================================
+
+package "Persistencia 1 - SQLite y DAO" {
+
+    class "sqlite3.Connection" as SQLiteConnection <<external>>
+
+
+    class ConexionSQLite <<module>> {
+        + abrir_conexion(ruta) : sqlite3.Connection
+    }
+
+
+    class InicializadorBD <<module>> {
+        + inicializar_bd(conexion : sqlite3.Connection)
+    }
+
+
+    class ClienteDAO {
+        - conexion : sqlite3.Connection
+
+        + ClienteDAO(conexion : sqlite3.Connection)
+        + crear(cliente : Cliente)
+        + obtener_por_id(id_cliente : int) : Cliente | None
+        + listar() : List<Cliente>
+        + actualizar(cliente : Cliente) : bool
+        + eliminar(id_cliente : int) : bool
+    }
+
+
+    class MascotaDAO {
+        - conexion : sqlite3.Connection
+        - cliente_dao : ClienteDAO
+
+        + MascotaDAO(conexion : sqlite3.Connection)
+        + crear(mascota : Mascota)
+        + obtener_por_id(id_mascota : int) : Mascota | None
+        + listar() : List<Mascota>
+        + actualizar(mascota : Mascota) : bool
+        + eliminar(id_mascota : int) : bool
+    }
+}
+
+
+' ============================================================
 ' RELACIONES - DOMINIO CLINICO
 ' ============================================================
 
@@ -547,6 +592,25 @@ EstrategiaReporte <|-- ReporteVacunasPendientes
 EstrategiaReporte <|-- ReporteTiemposTransitoProcesamiento
 
 GeneradorReportes --> EstrategiaReporte : utiliza >
+
+
+' ============================================================
+' DEPENDENCIAS - PERSISTENCIA 1
+' ============================================================
+
+ClienteDAO ..> Cliente : persiste
+
+MascotaDAO ..> Mascota : persiste
+
+MascotaDAO ..> ClienteDAO : utiliza
+
+ConexionSQLite ..> SQLiteConnection : crea
+
+ClienteDAO ..> SQLiteConnection : recibe
+
+MascotaDAO ..> SQLiteConnection : recibe
+
+InicializadorBD ..> SQLiteConnection : recibe
 
 
 ' ============================================================

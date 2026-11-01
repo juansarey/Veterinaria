@@ -1,0 +1,153 @@
+from datetime import date
+import sqlite3
+
+import pytest
+
+from veterinaria.dominio.clinica.cliente import Cliente
+from veterinaria.dominio.clinica.mascota import Mascota
+
+
+def test_crear_y_recuperar_datos_y_responsable(
+    conexion, cliente_dao, mascota_dao, cliente, mascota
+):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    recuperada = mascota_dao.obtener_por_id(20)
+    assert isinstance(recuperada, Mascota)
+    assert recuperada is not mascota
+    assert recuperada.id_mascota == mascota.id_mascota == 20
+    assert recuperada.nombre == mascota.nombre
+    assert recuperada.especie == mascota.especie
+    assert recuperada.raza == mascota.raza
+    assert recuperada.sexo == mascota.sexo
+    assert recuperada.fecha_nacimiento == date(2020, 5, 10)
+    assert type(recuperada.fecha_nacimiento) is date
+    assert recuperada.responsable is not cliente
+    assert isinstance(recuperada.responsable, Cliente)
+    assert vars(recuperada.responsable) == vars(cliente)
+    assert recuperada.responsable.id_cliente == 10
+    assert recuperada.obtener_historia_clinica() is None
+    assert recuperada.obtener_aplicaciones_vacuna() == []
+    fila = conexion.execute("""
+        SELECT id_cliente, fecha_nacimiento, typeof(fecha_nacimiento) AS tipo
+        FROM mascota WHERE id_mascota = ?
+    """, (20,)).fetchone()
+    assert tuple(fila) == (10, "2020-05-10", "text")
+
+
+def test_id_inexistente_devuelve_none(mascota_dao):
+    assert mascota_dao.obtener_por_id(999) is None
+
+
+def test_listar_vacio(mascota_dao):
+    assert mascota_dao.listar() == []
+
+
+def test_listar_varias_con_sus_responsables(cliente_dao, mascota_dao, cliente, mascota):
+    otro = Cliente(11, "Juan", "Pérez", "40000111")
+    cliente_dao.crear(cliente)
+    cliente_dao.crear(otro)
+    mascota_dao.crear(mascota)
+    mascota_dao.crear(Mascota(21, "Sol", "Gato", otro))
+    assert [
+        (m.id_mascota, m.nombre, m.responsable.id_cliente)
+        for m in mascota_dao.listar()
+    ] == [(20, "Luna", 10), (21, "Sol", 11)]
+
+
+def test_actualizar_campos_y_responsable(cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    otro = Cliente(11, "Juan", "Pérez", "40000111")
+    cliente_dao.crear(otro)
+    actualizada = Mascota(20, "Sol", "Gato", otro, "Siamés", date(2021, 2, 3), "Macho")
+    assert mascota_dao.actualizar(actualizada) is True
+    recuperada = mascota_dao.obtener_por_id(20)
+    assert (recuperada.nombre, recuperada.especie, recuperada.raza, recuperada.sexo) == (
+        "Sol", "Gato", "Siamés", "Macho"
+    )
+    assert recuperada.fecha_nacimiento == date(2021, 2, 3)
+    assert vars(recuperada.responsable) == vars(otro)
+
+
+def test_actualizar_inexistente_devuelve_false(mascota_dao, mascota):
+    assert mascota_dao.actualizar(mascota) is False
+
+
+def test_eliminar_no_elimina_responsable(cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    assert mascota_dao.eliminar(20) is True
+    assert mascota_dao.obtener_por_id(20) is None
+    assert cliente_dao.obtener_por_id(10) is not None
+
+
+def test_eliminar_inexistente_devuelve_false(mascota_dao):
+    assert mascota_dao.eliminar(999) is False
+
+
+def test_fk_inexistente_propaga_error(mascota_dao, mascota):
+    with pytest.raises(sqlite3.IntegrityError):
+        mascota_dao.crear(mascota)
+
+
+def test_actualizar_fk_inexistente_propaga_error(cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    mascota.responsable = Cliente(999, "Otro", "Responsable", "999")
+    with pytest.raises(sqlite3.IntegrityError):
+        mascota_dao.actualizar(mascota)
+    assert mascota_dao.obtener_por_id(20).responsable.id_cliente == 10
+
+
+def test_pk_duplicada_propaga_error(cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    with pytest.raises(sqlite3.IntegrityError):
+        mascota_dao.crear(mascota)
+
+
+def test_id_cliente_null_rechazado_por_sqlite(conexion):
+    with pytest.raises(sqlite3.IntegrityError):
+        conexion.execute("""
+            INSERT INTO mascota (id_mascota, id_cliente, nombre, especie)
+            VALUES (?, ?, ?, ?)
+        """, (20, None, "Luna", "Perro"))
+
+
+@pytest.mark.parametrize("campo", ["nombre", "especie"])
+def test_campos_obligatorios_rechazan_null(cliente_dao, mascota_dao, cliente, mascota, campo):
+    cliente_dao.crear(cliente)
+    setattr(mascota, campo, None)
+    with pytest.raises(sqlite3.IntegrityError):
+        mascota_dao.crear(mascota)
+
+
+def test_opcionales_null_se_conservan(cliente_dao, mascota_dao, cliente):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(Mascota(20, "Luna", "Perro", cliente, None, None, None))
+    recuperada = mascota_dao.obtener_por_id(20)
+    assert recuperada.raza is None
+    assert recuperada.fecha_nacimiento is None
+    assert recuperada.sexo is None
+
+
+def test_actualizar_fecha_a_null(conexion, cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    mascota.fecha_nacimiento = None
+    assert mascota_dao.actualizar(mascota) is True
+    assert mascota_dao.obtener_por_id(20).fecha_nacimiento is None
+    assert conexion.execute(
+        "SELECT fecha_nacimiento FROM mascota WHERE id_mascota = ?", (20,)
+    ).fetchone()[0] is None
+
+
+def test_texto_con_apostrofe_y_sql_es_literal(cliente_dao, mascota_dao, cliente, mascota):
+    cliente_dao.crear(cliente)
+    mascota.nombre = "L'Una'); DROP TABLE mascota; --"
+    mascota_dao.crear(mascota)
+    assert mascota_dao.obtener_por_id(20).nombre == mascota.nombre
+    assert mascota_dao.obtener_por_id("20 OR 1=1") is None
+    assert mascota_dao.eliminar("20 OR 1=1") is False
+    assert len(mascota_dao.listar()) == 1

@@ -5,8 +5,9 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los nueve primeros incrementos están implementados en Python, funcionan en memoria
-y están validados:
+Los nueve primeros incrementos del dominio están implementados en Python, funcionan
+en memoria y están validados. Además, Persistencia 1 incorpora almacenamiento para
+`Cliente` y `Mascota`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 - Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
@@ -33,13 +34,19 @@ y están validados:
   atenciones y derivaciones, muestras rechazadas, vacunas pendientes y tiempos
   promedio de tránsito y procesamiento.
 
-Resultado de la suite: **309 tests passed**.
+Persistencia 1 utiliza SQLite mediante `sqlite3` y el patrón DAO. Incluye una
+conexión compartida con claves foráneas activas, SQL parametrizado y ABMC de
+`Cliente` y `Mascota`.
+
+Resultado de la suite: **358 tests passed** (309 anteriores y 49 nuevos de
+Persistencia 1).
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
 rechazo por precinto roto, resultados de análisis y comprobantes de atención.
 También están implementados los dos patrones de diseño obligatorios, State y
-Strategy, y cuatro reportes no triviales. La persistencia permanece pendiente.
+Strategy, y cuatro reportes no triviales. Las demás entidades todavía funcionan
+exclusivamente en memoria.
 
 ## Agenda y turnos
 
@@ -83,6 +90,74 @@ Las relaciones del modelo de objetos son unidireccionales:
 `Mascota -> Cliente`, `Mascota -> HistoriaClinica`,
 `HistoriaClinica -> Atencion`, `Atencion -> Veterinario` y `Turno -> Mascota`.
 No se almacenan referencias inversas.
+
+## Persistencia 1: clientes y mascotas
+
+La persistencia sigue la separación:
+
+```text
+Dominio
+   ↓ utilizado por
+DAO
+   ↓
+sqlite3
+   ↓
+SQLite
+```
+
+Las entidades no conocen SQLite, conexiones ni DAO, y no contienen SQL. Los DAO
+conocen las entidades que persisten y reciben una `sqlite3.Connection` ya abierta.
+La conexión se crea a partir de una ruta, admite `:memory:`, activa
+`PRAGMA foreign_keys = ON` y configura `sqlite3.Row` para acceder a las columnas
+por nombre. No existen conexiones globales.
+
+`ClienteDAO` y `MascotaDAO` implementan exactamente estas operaciones:
+
+- `crear()`;
+- `obtener_por_id()`;
+- `listar()`;
+- `actualizar()`;
+- `eliminar()`.
+
+Todos los datos variables se envían mediante parámetros `?`. Los DAO conservan los
+IDs explícitos de los objetos y no asignan identificadores mediante `lastrowid`.
+Tampoco ejecutan `commit`: el código que coordina una operación decide si confirma
+con `conexion.commit()` o revierte con `conexion.rollback()`, por lo que ambos DAO
+pueden participar en una misma transacción.
+
+La relación se persiste mediante la clave foránea
+`mascota.id_cliente -> cliente.id_cliente`, obtenida de
+`mascota.responsable.id_cliente`. Al recuperar una mascota, `MascotaDAO` utiliza
+`ClienteDAO` para reconstruir su responsable. El sentido del modelo de objetos se
+mantiene como `Mascota -> Cliente`; no se agrega una colección de mascotas en
+`Cliente`.
+
+`fecha_nacimiento` se guarda como texto ISO mediante `date.isoformat()` y se
+recupera explícitamente con `date.fromisoformat()`. Los valores opcionales se
+conservan como `NULL` cuando corresponde. Las restricciones de PK, `UNIQUE`, FK y
+`NOT NULL` provienen del DER. Los DAO dejan que `sqlite3.IntegrityError` se propague
+ante una violación y no convierten esos errores en un resultado `False`.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    conexion.py
+    inicializar_bd.py
+    cliente_dao.py
+    mascota_dao.py
+
+tests/persistencia/
+    conftest.py
+    test_conexion.py
+    test_inicializar_bd.py
+    test_cliente_dao.py
+    test_mascota_dao.py
+```
+
+La inicialización crea únicamente las tablas `cliente` y `mascota` mediante
+`CREATE TABLE IF NOT EXISTS`. Los tests de persistencia utilizan bases aisladas,
+principalmente `:memory:`, y no comparten una base real entre ejecuciones.
 
 ## Vacunación
 
@@ -229,7 +304,9 @@ de resultados con transición de muestras recibidas a `ANALIZADA`. También cubr
 construcción y las referencias de los comprobantes de atención. Los 39 tests del
 noveno incremento verifican el cambio y la delegación de estrategias, los cuatro
 reportes, sus casos vacíos y múltiples, los promedios de tiempos y que las consultas
-no modifiquen el dominio.
+no modifiquen el dominio. Los 49 tests de Persistencia 1 verifican conexión e
+inicialización, ABMC, reconstrucción de responsables, fechas ISO, SQL parametrizado,
+restricciones de integridad, claves foráneas y control externo de transacciones.
 
 ## Documentación
 
@@ -241,8 +318,9 @@ El DER conserva `id_agenda` como identificador técnico de persistencia; el obje
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días laborales
 se almacenarán en `agenda_medica_dia`, con clave compuesta `(id_agenda, dia)`.
 
-## Próximas etapas por analizar
+## Próximas etapas
 
-Permanecen pendientes de revisión contra el enunciado y el modelo: persistencia,
-cierre de `RemitoBiologico`, liberación de `ConservadoraIsotermica` y revisión e
-integración final.
+La próxima etapa prevista es Persistencia 2 para `Clinica`, `Veterinario`,
+`AgendaMedica` y `Turno`. Todavía permanecen pendientes el resto de la persistencia,
+el cierre de `RemitoBiologico`, la liberación de `ConservadoraIsotermica` y la
+revisión e integración final.
