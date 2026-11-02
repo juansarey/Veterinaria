@@ -183,7 +183,6 @@ Enum estado_remito {
   GENERADO
   DESPACHADO
   RECIBIDO
-  CERRADO
 }
 
 Table remito_biologico {

@@ -5,7 +5,6 @@ class EstadoRemito(Enum):
     GENERADO = "GENERADO"
     DESPACHADO = "DESPACHADO"
     RECIBIDO = "RECIBIDO"
-    CERRADO = "CERRADO"
 
 
 class RemitoBiologico:

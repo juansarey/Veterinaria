@@ -152,7 +152,7 @@ def inicializar_bd(conexion: Connection) -> None:
                     REFERENCES clinica(id_clinica),
                 fecha_emision TEXT NOT NULL,
                 estado TEXT NOT NULL CHECK (estado IN (
-                    'GENERADO', 'DESPACHADO', 'RECIBIDO', 'CERRADO'
+                    'GENERADO', 'DESPACHADO', 'RECIBIDO'
                 )),
                 observaciones TEXT
             )
@@ -192,6 +192,28 @@ def inicializar_bd(conexion: Connection) -> None:
                     'EXTRAIDA', 'EMPAQUETADA', 'EN_TRANSITO',
                     'RECIBIDA', 'ANALIZADA', 'RECHAZADA'
                 )),
+                fecha_hora TEXT NOT NULL,
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS envio (
+                id_envio INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_remito INTEGER NOT NULL UNIQUE
+                    REFERENCES remito_biologico(id_remito),
+                fecha_hora_salida TEXT,
+                fecha_hora_llegada TEXT,
+                estado TEXT NOT NULL CHECK (estado IN (
+                    'PENDIENTE', 'EN_TRANSITO', 'ENTREGADO'
+                )),
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recepcion (
+                id_recepcion INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_envio INTEGER NOT NULL UNIQUE
+                    REFERENCES envio(id_envio),
                 fecha_hora TEXT NOT NULL,
                 observaciones TEXT
             )

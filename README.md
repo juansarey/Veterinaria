@@ -493,9 +493,8 @@ Los DAO implementados son:
 - `RemitoBiologicoDAO`: `crear()`, `obtener_por_id()`, `listar()`, `actualizar()` y
   `guardar_muestra_asociada()`. Persiste clínica de origen, conservadora, fecha de
   emisión, estado y observaciones; al recuperar incorpora el precinto opcional y la
-  colección de muestras. Los estados persistibles son `GENERADO`, `DESPACHADO`,
-  `RECIBIDO` y `CERRADO`. `CERRADO` forma parte del enum persistible, aunque el
-  dominio todavía no ofrece una operación `cerrar()`.
+  colección de muestras. Los estados persistibles son `GENERADO`, `DESPACHADO` y
+  `RECIBIDO`; este último es final.
 
 Al crear un remito, el DAO persiste también el estado `EN_USO` que la conservadora
 ya adquirió en el dominio. La lectura del remito no usa su constructor normal,
@@ -557,6 +556,64 @@ tests/persistencia/
 También se actualizaron `inicializar_bd.py`, `muestra_biologica_dao.py`,
 `tests/persistencia/conftest.py`, `test_inicializar_bd.py` y
 `test_muestra_biologica_dao.py`. No se agregó ningún `__init__.py`.
+
+## Persistencia 7: envío y recepción
+
+Persistencia 7 agrega las tablas `envio` y `recepcion` con relaciones uno a uno
+hacia `remito_biologico` y `envio`, respectivamente. Ambas FK son obligatorias y
+únicas, no utilizan `ON DELETE CASCADE` y sus violaciones se propagan como
+`sqlite3.IntegrityError`.
+
+`EnvioDAO` ofrece `crear()`, `obtener_por_id()`, `obtener_por_remito()`,
+`actualizar()` y `guardar_despacho()`. La actualización modifica únicamente fecha
+de salida, fecha de llegada, estado y observaciones; nunca reasigna el remito.
+`guardar_despacho()` se ejecuta después de `Envio.iniciar()` y persiste sobre la
+conexión compartida el envío, el remito y todas sus muestras. Para cada muestra
+delega en `MuestraBiologicaDAO.actualizar()`, por lo que sólo se insertan los nuevos
+eventos `EN_TRANSITO` y un segundo guardado no duplica historial.
+
+`RecepcionDAO` ofrece solamente `obtener_por_id()`, `obtener_por_envio()` y
+`guardar_recepcion()`. Esta última es la operación de inserción y se ejecuta después
+de `Recepcion.procesar_recepcion()`. Persiste coordinadamente la recepción, el envío
+`ENTREGADO`, el estado actual del precinto, el remito `RECIBIDO` y las muestras
+`RECIBIDA` o `RECHAZADA` con sus nuevos historiales. El DAO no verifica ni rompe el
+precinto, no decide el estado de las muestras y no ejecuta operaciones State.
+
+La lectura de un envío usa su constructor normal, recupera el remito mediante
+`RemitoBiologicoDAO` y restaura directamente sus fechas y `_estado`. La lectura de
+una recepción recupera el envío mediante `EnvioDAO` y usa también el constructor
+normal. Ninguna reconstrucción llama `iniciar()`, `registrar_llegada()` o
+`procesar_recepcion()`, ni modifica remitos, precintos, muestras o historiales.
+
+Los DAO reciben la misma `sqlite3.Connection` y no ejecutan `commit()` ni
+`rollback()`. El llamador puede confirmar o revertir como una unidad el despacho o
+la recepción completa, incluso ante una inconsistencia intermedia del historial.
+No se exponen operaciones públicas de eliminación para envíos ni recepciones porque
+integran la cadena de custodia.
+
+El ciclo definitivo de `RemitoBiologico` es:
+
+```text
+GENERADO -> DESPACHADO -> RECIBIDO
+```
+
+`RECIBIDO` es final; no existe `CERRADO` ni una operación `cerrar()`.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    envio_dao.py
+    recepcion_dao.py
+
+tests/persistencia/
+    test_envio_dao.py
+    test_recepcion_dao.py
+```
+
+También se actualizaron `remito_biologico.py`, `inicializar_bd.py`,
+`tests/persistencia/conftest.py`, `test_inicializar_bd.py` y este README. No se
+agregó ningún `__init__.py`, capa Service, Repository ni UnitOfWork.
 
 ## Vacunación
 
@@ -645,8 +702,7 @@ También se actualizaron `inicializar_bd.py`, `muestra_biologica_dao.py`,
 - La conservadora permanece `EN_USO` después de la recepción. No existe liberación
   automática y todavía no está definido cuándo debe liberarse.
 
-El flujo del remito implementado termina en `RECIBIDO`; `CERRADO` permanece en el
-enum, pero `cerrar()` todavía no está implementado.
+El flujo del remito termina definitivamente en `RECIBIDO`, que es final.
 
 ## Reportes y patrón Strategy
 
@@ -691,6 +747,8 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest
 ```
 
+La suite completa contiene actualmente 683 casos y finaliza sin fallos.
+
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
 de veterinarios, responsables de mascotas, asignación de historias clínicas,
@@ -728,28 +786,31 @@ restricciones de integridad, la FK final nullable de muestras, reconstrucción s
 operaciones de negocio, carga de clínica, conservadora, precinto y muestras,
 asociación idempotente sin duplicar historial, rechazo de reasignaciones y control
 externo de transacciones.
+Los tests de Persistencia 7 verifican las tablas y DAO de envío y recepción, las
+restricciones uno a uno, fechas opcionales, reconstrucción sin operaciones de
+dominio, despacho y recepción coordinados, precintos intactos y rotos, historial
+incremental sin duplicados, rollback externo, ausencia de commits internos y
+relaciones del dominio exclusivamente unidireccionales.
 
 ## Documentación
 
 - [UML editable](docs/uml/DG_TP_Veterinaria.puml) y [diagrama SVG](docs/uml/DG_TP_Veterinaria.svg).
 - [DER editable](docs/der/BD_TP_Veterinaria.dbml) y [diagrama SVG](docs/der/BD_TP_Veterinaria.svg).
 
-La fuente UML incluye los DAO de Persistencia 6. Su SVG queda pendiente de
-regeneración porque PlantUML no está disponible en el entorno actual.
+La fuente UML se mantiene como diagrama de dominio, State y Strategy; no incorpora
+DAO ni clases de persistencia. Su SVG queda pendiente de regeneración porque
+PlantUML no está disponible en el entorno actual.
 
 Los diagramas también incluyen el diseño previsto para incrementos posteriores.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
 laborales se almacenan en `agenda_medica_dia`, con clave compuesta
-`(id_agenda, dia)`. El DER no requiere cambios para Persistencia 2 a Persistencia
-6. Ya representa la relación final entre `muestra_biologica.id_remito` y
-`remito_biologico.id_remito`, que Persistencia 6 incorporó al esquema SQLite para
-bases nuevas.
+`(id_agenda, dia)`. El DER ya representa las relaciones finales entre muestras,
+remitos, envíos y recepciones utilizadas por el esquema SQLite para bases nuevas.
 
 ## Próximas etapas
 
-La próxima etapa es Persistencia 7 para `Envio` y `Recepcion`, que completará la
-cadena de custodia persistente desde el despacho hasta la recepción. No está
-implementada. También permanecen pendientes la persistencia de
-`ResultadoAnalisis` y `ComprobanteAtencion`, el cierre de `RemitoBiologico`, la
-liberación de `ConservadoraIsotermica` y la revisión e integración final.
+La cadena de custodia persistente desde el despacho hasta la recepción quedó
+implementada en Persistencia 7. Permanecen pendientes la persistencia de
+`ResultadoAnalisis` y `ComprobanteAtencion`, la liberación de
+`ConservadoraIsotermica` y la revisión e integración final.

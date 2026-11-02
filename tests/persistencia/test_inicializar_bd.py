@@ -1,4 +1,5 @@
 from contextlib import closing
+import sqlite3
 
 import pytest
 
@@ -6,7 +7,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_a_6():
+def test_crea_solamente_las_tablas_de_persistencia_1_a_7():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -31,6 +32,8 @@ def test_crea_solamente_las_tablas_de_persistencia_1_a_6():
             "conservadora_isotermica",
             "remito_biologico",
             "precinto_sanitario",
+            "envio",
+            "recepcion",
         }
 
 
@@ -108,8 +111,14 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
     ("precinto_sanitario", {
         ("id_remito", "remito_biologico", "id_remito"),
     }),
+    ("envio", {
+        ("id_remito", "remito_biologico", "id_remito"),
+    }),
+    ("recepcion", {
+        ("id_envio", "envio", "id_envio"),
+    }),
 ])
-def test_fk_de_persistencia_2_a_6_sin_cascadas(
+def test_fk_de_persistencia_2_a_7_sin_cascadas(
     conexion, tabla, referencias
 ):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
@@ -244,9 +253,42 @@ def test_fk_de_persistencia_2_a_6_sin_cascadas(
         ("codigo", "VARCHAR(50)", 1, 0),
         ("estado", "TEXT", 1, 0),
     ]),
+    ("envio", [
+        ("id_envio", "INTEGER", 0, 1),
+        ("id_remito", "INTEGER", 1, 0),
+        ("fecha_hora_salida", "TEXT", 0, 0),
+        ("fecha_hora_llegada", "TEXT", 0, 0),
+        ("estado", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("recepcion", [
+        ("id_recepcion", "INTEGER", 0, 1),
+        ("id_envio", "INTEGER", 1, 0),
+        ("fecha_hora", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):
     filas = conexion.execute(
         "SELECT name, type, [notnull], pk FROM pragma_table_info(?)", (tabla,)
     ).fetchall()
     assert [tuple(fila) for fila in filas] == esperado
+
+
+def test_cerrado_ya_no_es_un_estado_valido_de_remito(conexion):
+    conexion.execute("""
+        INSERT INTO clinica (id_clinica, nombre, direccion)
+        VALUES (1, 'Centro', 'San Martín 100')
+    """)
+    conexion.execute("""
+        INSERT INTO conservadora_isotermica
+            (id_conservadora, codigo, estado)
+        VALUES (1, 'CONS-1', 'EN_USO')
+    """)
+    with pytest.raises(sqlite3.IntegrityError):
+        conexion.execute("""
+            INSERT INTO remito_biologico
+                (id_remito, id_conservadora, id_clinica_origen,
+                 fecha_emision, estado)
+            VALUES (1, 1, 1, '2026-11-02T10:00:00', 'CERRADO')
+        """)

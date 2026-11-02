@@ -30,6 +30,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.conservadora_isotermica_dao import (
     ConservadoraIsotermicaDAO,
 )
+from veterinaria.persistencia.envio_dao import EnvioDAO
 from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 from veterinaria.persistencia.mascota_dao import MascotaDAO
@@ -38,6 +39,7 @@ from veterinaria.persistencia.orden_derivacion_laboratorio_dao import (
     OrdenDerivacionLaboratorioDAO,
 )
 from veterinaria.persistencia.precinto_sanitario_dao import PrecintoSanitarioDAO
+from veterinaria.persistencia.recepcion_dao import RecepcionDAO
 from veterinaria.persistencia.remito_biologico_dao import RemitoBiologicoDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
 from veterinaria.persistencia.vacuna_dao import VacunaDAO
@@ -127,6 +129,16 @@ def precinto_sanitario_dao(conexion):
 @pytest.fixture
 def remito_biologico_dao(conexion):
     return RemitoBiologicoDAO(conexion)
+
+
+@pytest.fixture
+def envio_dao(conexion):
+    return EnvioDAO(conexion)
+
+
+@pytest.fixture
+def recepcion_dao(conexion):
+    return RecepcionDAO(conexion)
 
 
 @pytest.fixture
