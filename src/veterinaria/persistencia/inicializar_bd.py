@@ -218,3 +218,21 @@ def inicializar_bd(conexion: Connection) -> None:
                 observaciones TEXT
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS resultado_analisis (
+                id_resultado INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_muestra INTEGER NOT NULL UNIQUE
+                    REFERENCES muestra_biologica(id_muestra),
+                fecha_resultado TEXT NOT NULL,
+                resultado TEXT NOT NULL,
+                observaciones TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS comprobante_atencion (
+                id_comprobante INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_atencion INTEGER NOT NULL UNIQUE
+                    REFERENCES atencion(id_atencion),
+                fecha_emision TEXT NOT NULL
+            )
+        """)

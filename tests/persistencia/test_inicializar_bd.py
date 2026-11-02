@@ -7,7 +7,7 @@ from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.inicializar_bd import inicializar_bd
 
 
-def test_crea_solamente_las_tablas_de_persistencia_1_a_7():
+def test_crea_solamente_las_tablas_de_persistencia_1_a_8():
     with closing(abrir_conexion(":memory:")) as conexion:
         inicializar_bd(conexion)
         tablas = conexion.execute("""
@@ -34,6 +34,8 @@ def test_crea_solamente_las_tablas_de_persistencia_1_a_7():
             "precinto_sanitario",
             "envio",
             "recepcion",
+            "resultado_analisis",
+            "comprobante_atencion",
         }
 
 
@@ -117,8 +119,14 @@ def test_fk_mascota_referencia_cliente_sin_cascadas(conexion):
     ("recepcion", {
         ("id_envio", "envio", "id_envio"),
     }),
+    ("resultado_analisis", {
+        ("id_muestra", "muestra_biologica", "id_muestra"),
+    }),
+    ("comprobante_atencion", {
+        ("id_atencion", "atencion", "id_atencion"),
+    }),
 ])
-def test_fk_de_persistencia_2_a_7_sin_cascadas(
+def test_fk_de_persistencia_2_a_8_sin_cascadas(
     conexion, tabla, referencias
 ):
     claves = conexion.execute(f"PRAGMA foreign_key_list({tabla})").fetchall()
@@ -267,6 +275,18 @@ def test_fk_de_persistencia_2_a_7_sin_cascadas(
         ("fecha_hora", "TEXT", 1, 0),
         ("observaciones", "TEXT", 0, 0),
     ]),
+    ("resultado_analisis", [
+        ("id_resultado", "INTEGER", 0, 1),
+        ("id_muestra", "INTEGER", 1, 0),
+        ("fecha_resultado", "TEXT", 1, 0),
+        ("resultado", "TEXT", 1, 0),
+        ("observaciones", "TEXT", 0, 0),
+    ]),
+    ("comprobante_atencion", [
+        ("id_comprobante", "INTEGER", 0, 1),
+        ("id_atencion", "INTEGER", 1, 0),
+        ("fecha_emision", "TEXT", 1, 0),
+    ]),
 ])
 def test_columnas_tipos_y_opcionalidad(conexion, tabla, esperado):
     filas = conexion.execute(
@@ -292,3 +312,24 @@ def test_cerrado_ya_no_es_un_estado_valido_de_remito(conexion):
                  fecha_emision, estado)
             VALUES (1, 1, 1, '2026-11-02T10:00:00', 'CERRADO')
         """)
+
+
+@pytest.mark.parametrize("tabla, columna", [
+    ("resultado_analisis", "id_muestra"),
+    ("comprobante_atencion", "id_atencion"),
+])
+def test_fk_de_persistencia_8_rechaza_null(conexion, tabla, columna):
+    if tabla == "resultado_analisis":
+        sql = """
+            INSERT INTO resultado_analisis
+                (id_resultado, id_muestra, fecha_resultado, resultado)
+            VALUES (170, NULL, '2026-11-03T14:00:00', 'Sin alteraciones')
+        """
+    else:
+        sql = """
+            INSERT INTO comprobante_atencion
+                (id_comprobante, id_atencion, fecha_emision)
+            VALUES (180, NULL, '2026-11-03T10:30:00')
+        """
+    with pytest.raises(sqlite3.IntegrityError, match=columna):
+        conexion.execute(sql)

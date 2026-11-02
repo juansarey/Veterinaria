@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
@@ -26,6 +26,7 @@ from veterinaria.persistencia.aplicacion_vacuna_dao import AplicacionVacunaDAO
 from veterinaria.persistencia.atencion_dao import AtencionDAO
 from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
+from veterinaria.persistencia.comprobante_atencion_dao import ComprobanteAtencionDAO
 from veterinaria.persistencia.conexion import abrir_conexion
 from veterinaria.persistencia.conservadora_isotermica_dao import (
     ConservadoraIsotermicaDAO,
@@ -41,6 +42,7 @@ from veterinaria.persistencia.orden_derivacion_laboratorio_dao import (
 from veterinaria.persistencia.precinto_sanitario_dao import PrecintoSanitarioDAO
 from veterinaria.persistencia.recepcion_dao import RecepcionDAO
 from veterinaria.persistencia.remito_biologico_dao import RemitoBiologicoDAO
+from veterinaria.persistencia.resultado_analisis_dao import ResultadoAnalisisDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
 from veterinaria.persistencia.vacuna_dao import VacunaDAO
 from veterinaria.persistencia.veterinario_dao import VeterinarioDAO
@@ -139,6 +141,50 @@ def envio_dao(conexion):
 @pytest.fixture
 def recepcion_dao(conexion):
     return RecepcionDAO(conexion)
+
+
+@pytest.fixture
+def resultado_analisis_dao(conexion):
+    return ResultadoAnalisisDAO(conexion)
+
+
+@pytest.fixture
+def comprobante_atencion_dao(conexion):
+    return ComprobanteAtencionDAO(conexion)
+
+
+@pytest.fixture
+def atencion_persistida(
+    cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
+    historia_clinica_dao, atencion_dao, cliente, mascota, clinica,
+    veterinario, historia_clinica, atencion,
+):
+    cliente_dao.crear(cliente)
+    mascota_dao.crear(mascota)
+    clinica_dao.crear(clinica)
+    veterinario_dao.crear(veterinario, clinica.id_clinica)
+    historia_clinica_dao.crear(historia_clinica, mascota.id_mascota)
+    atencion_dao.crear(atencion, historia_clinica.id_historia)
+    return atencion
+
+
+@pytest.fixture
+def muestra_recibida_persistida(
+    atencion_persistida, orden_derivacion_laboratorio_dao,
+    orden_derivacion_laboratorio, muestra_biologica_dao, muestra_biologica,
+):
+    orden_derivacion_laboratorio_dao.crear(
+        orden_derivacion_laboratorio, atencion_persistida.id_atencion
+    )
+    muestra_biologica_dao.crear(
+        muestra_biologica, orden_derivacion_laboratorio.id_orden
+    )
+    fecha = muestra_biologica.fecha_extraccion
+    assert muestra_biologica.empaquetar(fecha + timedelta(minutes=1))
+    assert muestra_biologica.despachar(fecha + timedelta(minutes=2))
+    assert muestra_biologica.recibir(fecha + timedelta(minutes=3))
+    assert muestra_biologica_dao.actualizar(muestra_biologica)
+    return muestra_biologica
 
 
 @pytest.fixture

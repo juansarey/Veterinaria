@@ -6,12 +6,13 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1 a Persistencia 6 incorporan
+en memoria y están validados. Persistencia 1 a Persistencia 8 incorporan
 almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`,
 `AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna`,
 `AplicacionVacuna`, `OrdenDerivacionLaboratorio`, `MuestraBiologica`,
 `HistorialEstadoMuestra`, `ConservadoraIsotermica`, `PrecintoSanitario` y
-`RemitoBiologico`. El historial de estados se persiste como parte interna de
+`RemitoBiologico`, `Envio`, `Recepcion`, `ResultadoAnalisis` y
+`ComprobanteAtencion`. El historial de estados se persiste como parte interna de
 `MuestraBiologicaDAO`:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
@@ -47,11 +48,9 @@ Persistencia 3 incorpora `HistoriaClinica` y `Atencion`; Persistencia 4 agrega
 `Vacuna` y `AplicacionVacuna`; Persistencia 5 incorpora
 `OrdenDerivacionLaboratorio`, `MuestraBiologica` y su historial de estados; y
 Persistencia 6 agrega `ConservadoraIsotermica`, `PrecintoSanitario` y
-`RemitoBiologico`.
-
-Resultado de la suite: **648 tests passed** (309 de dominio y patrones, 49 de
-Persistencia 1, 81 de Persistencia 2, 43 de Persistencia 3, 42 de Persistencia 4,
-61 de Persistencia 5 y 63 de Persistencia 6).
+`RemitoBiologico`; Persistencia 7 agrega `Envio` y `Recepcion`; y Persistencia 8
+incorpora `ResultadoAnalisis` y `ComprobanteAtencion`. El total verificado de tests
+se informa en la sección Pruebas.
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
@@ -615,6 +614,78 @@ También se actualizaron `remito_biologico.py`, `inicializar_bd.py`,
 `tests/persistencia/conftest.py`, `test_inicializar_bd.py` y este README. No se
 agregó ningún `__init__.py`, capa Service, Repository ni UnitOfWork.
 
+## Persistencia 8: resultados de análisis y comprobantes de atención
+
+Persistencia 8 incorpora las tablas `resultado_analisis` y
+`comprobante_atencion`. `resultado_analisis.id_muestra` es una FK obligatoria y
+única: cada muestra admite como máximo un resultado persistido.
+`comprobante_atencion.id_atencion` también es una FK obligatoria y única: cada
+atención admite como máximo un comprobante persistido. Ambas fechas son
+obligatorias, al igual que el contenido del resultado; el contenido vacío está
+permitido y las observaciones del resultado aceptan `NULL`. No se agregan cascadas.
+
+`ResultadoAnalisisDAO` ofrece únicamente `guardar_resultado()`, `obtener_por_id()`
+y `obtener_por_muestra()`. El llamador debe ejecutar primero
+`resultado.registrar_resultado()` y guardar sólo si devuelve `True`. Esta operación
+de dominio delega en la muestra la transición `RECIBIDA -> ANALIZADA` y agrega el
+evento histórico correspondiente. `guardar_resultado()` comprueba defensivamente
+que la muestra esté `ANALIZADA`, inserta el resultado y delega la persistencia de la
+muestra y los eventos nuevos en `MuestraBiologicaDAO.actualizar()`.
+
+El DAO no vuelve a ejecutar `registrar_resultado()`, `analizar()` ni operaciones
+State. Tampoco agrega un indicador de registro al dominio. La comprobación de
+estado no sustituye el contrato del llamador: sólo éste conoce el retorno de
+`registrar_resultado()` para ese resultado. Una muestra `RECHAZADA` no puede
+registrar un análisis y el guardado defensivo la rechaza con `ValueError`.
+
+La actualización de una muestra sin nuevas transiciones no duplica historial.
+Una segunda inserción de resultado falla por PK o por la FK única `id_muestra` y
+propaga `sqlite3.IntegrityError`; no se interpreta como una actualización.
+
+`ComprobanteAtencionDAO` ofrece únicamente `crear()`, `obtener_por_id()` y
+`obtener_por_atencion()`. Persiste el comprobante cuya construcción válida ya
+representa la emisión. No incorpora estados, pagos ni otra lógica de facturación.
+Una segunda inserción para la misma atención también propaga
+`sqlite3.IntegrityError`. Ninguno de los dos DAO expone `actualizar()`, `eliminar()`
+o `listar()`; el DAO de resultados tampoco expone `crear()`.
+
+Ambos DAO exigen IDs explícitos y rechazan `None` con `ValueError`. Los errores de
+PK, FK, `UNIQUE` y `NOT NULL` se propagan como `sqlite3.IntegrityError`. Las fechas
+provienen de los objetos y se almacenan mediante `isoformat()`.
+
+La hidratación usa los constructores normales, que sólo validan parámetros y
+almacenan referencias. El resultado recupera su muestra mediante
+`MuestraBiologicaDAO`; el comprobante recupera su atención y el veterinario básico
+mediante `AtencionDAO`. Las fechas se reconstruyen con `datetime.fromisoformat()`.
+La lectura no ejecuta transiciones ni inserta historial, y no registra nuevamente
+la atención. Las relaciones OO siguen siendo únicamente:
+
+```text
+ResultadoAnalisis -> MuestraBiologica
+ComprobanteAtencion -> Atencion
+```
+
+Todos los DAO utilizan la `sqlite3.Connection` compartida y dejan el `commit()` o
+`rollback()` al llamador. Resultado, estado de muestra e historial pueden
+confirmarse o revertirse juntos, incluso si falla la validación del historial
+después de insertar el resultado. El rollback revierte SQLite, no los objetos
+Python; para comprobar o continuar con el estado persistido deben recargarse.
+
+Los archivos incorporados son:
+
+```text
+src/veterinaria/persistencia/
+    resultado_analisis_dao.py
+    comprobante_atencion_dao.py
+
+tests/persistencia/
+    test_resultado_analisis_dao.py
+    test_comprobante_atencion_dao.py
+```
+
+También se actualizaron `inicializar_bd.py`, las fixtures de persistencia, sus tests
+de inicialización y este README. El dominio, el DER y el UML no requieren cambios.
+
 ## Vacunación
 
 - `Mascota` mantiene una colección de `AplicacionVacuna`; cada aplicación conoce
@@ -747,7 +818,7 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest
 ```
 
-La suite completa contiene actualmente 683 casos y finaliza sin fallos.
+La suite completa contiene actualmente 730 casos y finaliza sin fallos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
@@ -791,6 +862,11 @@ restricciones uno a uno, fechas opcionales, reconstrucción sin operaciones de
 dominio, despacho y recepción coordinados, precintos intactos y rotos, historial
 incremental sin duplicados, rollback externo, ausencia de commits internos y
 relaciones del dominio exclusivamente unidireccionales.
+Los tests de Persistencia 8 verifican ambas tablas y DAO, IDs explícitos, fechas
+con microsegundos, restricciones de integridad, reconstrucción sin operaciones de
+negocio, análisis de muestras recibidas, rechazo de muestras no analizadas,
+historial sin duplicados y control externo de transacciones tanto exitosas como
+fallidas.
 
 ## Documentación
 
@@ -810,7 +886,7 @@ remitos, envíos y recepciones utilizadas por el esquema SQLite para bases nueva
 
 ## Próximas etapas
 
-La cadena de custodia persistente desde el despacho hasta la recepción quedó
-implementada en Persistencia 7. Permanecen pendientes la persistencia de
-`ResultadoAnalisis` y `ComprobanteAtencion`, la liberación de
-`ConservadoraIsotermica` y la revisión e integración final.
+La persistencia de las entidades del MVP quedó implementada hasta resultados de
+análisis y comprobantes de atención en Persistencia 8. Permanecen pendientes la
+integración y auditoría final de persistencia (P9), la revisión e integración final
+y la definición del momento de liberación de `ConservadoraIsotermica`.
