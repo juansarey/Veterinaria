@@ -39,6 +39,14 @@ def test_rechaza_responsable_ausente():
         Mascota(1, "Luna", "Perro", None)
 
 
+@pytest.mark.parametrize("nuevo", [None, Cliente(2, "Ana", "Pérez", "123")])
+def test_responsable_no_admite_reasignacion(responsable, nuevo):
+    mascota = Mascota(1, "Luna", "Perro", responsable)
+    with pytest.raises(AttributeError):
+        mascota.responsable = nuevo
+    assert mascota.responsable is responsable
+
+
 def test_historia_clinica_inicialmente_ausente(responsable):
     mascota = Mascota(1, "Luna", "Perro", responsable)
     assert mascota.obtener_historia_clinica() is None

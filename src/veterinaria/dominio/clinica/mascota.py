@@ -15,12 +15,16 @@ class Mascota:
         self.id_mascota = id_mascota
         self.nombre = nombre
         self.especie = especie
-        self.responsable = responsable
+        self._responsable = responsable
         self.raza = raza
         self.fecha_nacimiento = fecha_nacimiento
         self.sexo = sexo
         self._historia_clinica = None
         self._aplicaciones_vacuna = []
+
+    @property
+    def responsable(self):
+        return self._responsable
 
     def obtener_historia_clinica(self):
         return self._historia_clinica

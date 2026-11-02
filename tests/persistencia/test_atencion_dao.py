@@ -9,6 +9,9 @@ from veterinaria.dominio.clinica.cliente import Cliente
 from veterinaria.dominio.clinica.historia_clinica import HistoriaClinica
 from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.veterinario import Veterinario
+from veterinaria.dominio.laboratorio.orden_derivacion_laboratorio import (
+    OrdenDerivacionLaboratorio,
+)
 
 
 def _persistir_dependencias(
@@ -61,6 +64,7 @@ def test_inexistente_devuelve_none(atencion_dao):
 
 def test_listados_vacios(atencion_dao):
     assert atencion_dao.listar() == []
+    assert atencion_dao.listar(cargar_ordenes=True) == []
     assert atencion_dao.listar_por_historia(999) == []
 
 
@@ -363,3 +367,51 @@ def test_crear_actualizar_y_eliminar_no_hacen_commit(
     atencion_dao.eliminar(70)
     conexion.rollback()
     assert atencion_dao.obtener_por_id(70) is not None
+
+
+def test_listar_carga_ordenes_opcionalmente_sin_mezclarlas(
+    conexion, monkeypatch, atencion_persistida, atencion_dao,
+    orden_derivacion_laboratorio_dao,
+):
+    for id_atencion in (71, 72):
+        atencion_dao.crear(Atencion(
+            id_atencion, atencion_persistida.fecha_hora, TipoAtencion.CONTROL,
+            "Control", atencion_persistida.veterinario,
+        ), 60)
+    for id_orden, id_atencion in ((102, 70), (100, 70), (101, 71)):
+        orden_derivacion_laboratorio_dao.crear(OrdenDerivacionLaboratorio(
+            id_orden, atencion_persistida.fecha_hora, f"Estudio {id_orden}",
+        ), id_atencion)
+
+    def operacion_prohibida(*args, **kwargs):
+        raise AssertionError("Leer no debe asociar órdenes por el dominio")
+
+    monkeypatch.setattr(Atencion, "agregar_orden_derivacion", operacion_prohibida)
+    monkeypatch.setattr(
+        OrdenDerivacionLaboratorio, "iniciar_proceso", operacion_prohibida
+    )
+    assert all(a.obtener_ordenes_derivacion() == [] for a in atencion_dao.listar())
+    assert all(
+        a.obtener_ordenes_derivacion() == []
+        for a in atencion_dao.listar(cargar_ordenes=False)
+    )
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        for _ in range(2):
+            atenciones = atencion_dao.listar(cargar_ordenes=True)
+            assert [a.id_atencion for a in atenciones] == [70, 71, 72]
+            assert [
+                [o.id_orden for o in a.obtener_ordenes_derivacion()]
+                for a in atenciones
+            ] == [[100, 102], [101], []]
+            assert atenciones[1].obtener_ordenes_derivacion()[0].estudio_solicitado == (
+                "Estudio 101"
+            )
+    finally:
+        conexion.set_trace_callback(None)
+    assert all(sql.lstrip().upper().startswith("SELECT") for sql in sentencias)
+    assert conexion.execute(
+        "SELECT COUNT(*) FROM orden_derivacion_laboratorio"
+    ).fetchone()[0] == 3
+    assert atencion_dao.obtener_por_id(70).obtener_ordenes_derivacion() == []

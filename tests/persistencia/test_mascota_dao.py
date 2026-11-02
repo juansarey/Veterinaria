@@ -5,6 +5,8 @@ import pytest
 
 from veterinaria.dominio.clinica.cliente import Cliente
 from veterinaria.dominio.clinica.mascota import Mascota
+from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
+from veterinaria.dominio.vacunacion.vacuna import Vacuna
 
 
 def test_crear_y_recuperar_datos_y_responsable(
@@ -41,6 +43,7 @@ def test_id_inexistente_devuelve_none(mascota_dao):
 
 def test_listar_vacio(mascota_dao):
     assert mascota_dao.listar() == []
+    assert mascota_dao.listar(cargar_aplicaciones=True) == []
 
 
 def test_listar_varias_con_sus_responsables(cliente_dao, mascota_dao, cliente, mascota):
@@ -94,9 +97,12 @@ def test_fk_inexistente_propaga_error(mascota_dao, mascota):
 def test_actualizar_fk_inexistente_propaga_error(cliente_dao, mascota_dao, cliente, mascota):
     cliente_dao.crear(cliente)
     mascota_dao.crear(mascota)
-    mascota.responsable = Cliente(999, "Otro", "Responsable", "999")
+    actualizada = Mascota(
+        mascota.id_mascota, mascota.nombre, mascota.especie,
+        Cliente(999, "Otro", "Responsable", "999"),
+    )
     with pytest.raises(sqlite3.IntegrityError):
-        mascota_dao.actualizar(mascota)
+        mascota_dao.actualizar(actualizada)
     assert mascota_dao.obtener_por_id(20).responsable.id_cliente == 10
 
 
@@ -151,3 +157,58 @@ def test_texto_con_apostrofe_y_sql_es_literal(cliente_dao, mascota_dao, cliente,
     assert mascota_dao.obtener_por_id("20 OR 1=1") is None
     assert mascota_dao.eliminar("20 OR 1=1") is False
     assert len(mascota_dao.listar()) == 1
+
+
+def test_listar_carga_aplicaciones_opcionalmente_sin_mezclarlas(
+    conexion, monkeypatch, cliente_dao, mascota_dao, vacuna_dao,
+    aplicacion_vacuna_dao, cliente, mascota,
+):
+    cliente_dao.crear(cliente)
+    for actual in (mascota, Mascota(21, "Sol", "Gato", cliente),
+                   Mascota(22, "Toby", "Perro", cliente)):
+        mascota_dao.crear(actual)
+    canina = Vacuna(80, "Antirrábica", "Perro", True)
+    felina = Vacuna(81, "Triple felina", "Gato", True)
+    vacuna_dao.crear(canina)
+    vacuna_dao.crear(felina)
+    for id_aplicacion, vacuna, id_mascota in (
+        (92, canina, 20), (90, canina, 20), (91, felina, 21),
+    ):
+        aplicacion_vacuna_dao.crear(
+            AplicacionVacuna(id_aplicacion, vacuna, date(2026, 1, 1)),
+            id_mascota,
+        )
+
+    def operacion_prohibida(*args, **kwargs):
+        raise AssertionError("Leer no debe registrar aplicaciones")
+
+    monkeypatch.setattr(Mascota, "agregar_aplicacion_vacuna", operacion_prohibida)
+    assert all(m.obtener_aplicaciones_vacuna() == [] for m in mascota_dao.listar())
+    assert all(
+        m.obtener_aplicaciones_vacuna() == []
+        for m in mascota_dao.listar(cargar_aplicaciones=False)
+    )
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        for _ in range(2):
+            mascotas = mascota_dao.listar(cargar_aplicaciones=True)
+            assert [m.id_mascota for m in mascotas] == [20, 21, 22]
+            assert [
+                [a.id_aplicacion for a in m.obtener_aplicaciones_vacuna()]
+                for m in mascotas
+            ] == [[90, 92], [91], []]
+            assert [
+                [a.vacuna.id_vacuna for a in m.obtener_aplicaciones_vacuna()]
+                for m in mascotas
+            ] == [[80, 80], [81], []]
+            assert mascotas[1].obtener_aplicaciones_vacuna()[0].vacuna.nombre == (
+                "Triple felina"
+            )
+    finally:
+        conexion.set_trace_callback(None)
+    assert all(sql.lstrip().upper().startswith("SELECT") for sql in sentencias)
+    assert conexion.execute(
+        "SELECT COUNT(*) FROM aplicacion_vacuna"
+    ).fetchone()[0] == 3
+    assert mascota_dao.obtener_por_id(20).obtener_aplicaciones_vacuna() == []

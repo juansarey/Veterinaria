@@ -1,10 +1,12 @@
 from datetime import date, datetime, time, timedelta
+from contextlib import closing
 
 import pytest
 
 from veterinaria.dominio.clinica.cliente import Cliente
 from veterinaria.dominio.clinica.clinica import Clinica
 from veterinaria.dominio.clinica.atencion import Atencion, TipoAtencion
+from veterinaria.dominio.clinica.comprobante_atencion import ComprobanteAtencion
 from veterinaria.dominio.clinica.historia_clinica import HistoriaClinica
 from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
@@ -14,10 +16,13 @@ from veterinaria.dominio.laboratorio.muestra_biologica import MuestraBiologica
 from veterinaria.dominio.laboratorio.orden_derivacion_laboratorio import (
     OrdenDerivacionLaboratorio,
 )
+from veterinaria.dominio.laboratorio.resultado_analisis import ResultadoAnalisis
 from veterinaria.dominio.transporte.conservadora_isotermica import (
     ConservadoraIsotermica,
 )
 from veterinaria.dominio.transporte.precinto_sanitario import PrecintoSanitario
+from veterinaria.dominio.transporte.envio import Envio
+from veterinaria.dominio.transporte.recepcion import Recepcion
 from veterinaria.dominio.transporte.remito_biologico import RemitoBiologico
 from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
 from veterinaria.dominio.vacunacion.vacuna import Vacuna
@@ -303,3 +308,119 @@ def remito_biologico(clinica, conservadora_isotermica):
         datetime(2026, 11, 3, 12, 30, 45, 123456),
         "Traslado al laboratorio central",
     )
+
+
+@pytest.fixture
+def circuito_persistido(
+    tmp_path, cliente, mascota, historia_clinica, clinica, veterinario,
+    agenda_medica, vacuna, aplicacion_vacuna, atencion,
+    orden_derivacion_laboratorio, muestra_biologica,
+    conservadora_isotermica, precinto_sanitario,
+):
+    """Construye un circuito por test y devuelve la ruta con la conexión cerrada."""
+    def persistir(*, precinto_roto=False):
+        ruta = tmp_path / "veterinaria.db"
+        assert mascota.asignar_historia_clinica(historia_clinica)
+        assert clinica.agregar_veterinario(veterinario)
+        veterinario.asignar_agenda(agenda_medica)
+        turno = Turno(
+            50, atencion.fecha_hora,
+            atencion.fecha_hora + timedelta(minutes=30), mascota,
+            "Control anual",
+        )
+        veterinario.agregar_turno(turno)
+        turno.confirmar()
+        assert mascota.agregar_aplicacion_vacuna(aplicacion_vacuna)
+        assert mascota.registrar_atencion(atencion, [vacuna])
+        turno.marcar_atendido()
+        orden = orden_derivacion_laboratorio
+        muestra = muestra_biologica
+        assert atencion.agregar_orden_derivacion(orden)
+        assert orden.agregar_muestra(muestra)
+        assert orden.iniciar_proceso()
+
+        with closing(abrir_conexion(ruta)) as conexion_circuito:
+            inicializar_bd(conexion_circuito)
+            ClienteDAO(conexion_circuito).crear(cliente)
+            MascotaDAO(conexion_circuito).crear(mascota)
+            HistoriaClinicaDAO(conexion_circuito).crear(
+                historia_clinica, mascota.id_mascota
+            )
+            ClinicaDAO(conexion_circuito).crear(clinica)
+            VeterinarioDAO(conexion_circuito).crear(
+                veterinario, clinica.id_clinica
+            )
+            AgendaMedicaDAO(conexion_circuito).crear(
+                agenda_medica, veterinario.id_veterinario
+            )
+            TurnoDAO(conexion_circuito).crear(turno, veterinario.id_veterinario)
+            VacunaDAO(conexion_circuito).crear(vacuna)
+            AplicacionVacunaDAO(conexion_circuito).crear(
+                aplicacion_vacuna, mascota.id_mascota
+            )
+            AtencionDAO(conexion_circuito).crear(
+                atencion, historia_clinica.id_historia
+            )
+            OrdenDerivacionLaboratorioDAO(conexion_circuito).crear(
+                orden, atencion.id_atencion
+            )
+            MuestraBiologicaDAO(conexion_circuito).crear(muestra, orden.id_orden)
+            ConservadoraIsotermicaDAO(conexion_circuito).crear(
+                conservadora_isotermica
+            )
+            remito = RemitoBiologico(
+                130, clinica, conservadora_isotermica,
+                datetime(2026, 11, 3, 12, 30, 45, 123456),
+                "Traslado al laboratorio central",
+            )
+            remito_dao = RemitoBiologicoDAO(conexion_circuito)
+            remito_dao.crear(remito)
+            assert remito.agregar_muestra(
+                muestra, datetime(2026, 11, 3, 12, 45), "Acondicionada"
+            )
+            assert remito_dao.guardar_muestra_asociada(remito, muestra)
+            assert remito.asignar_precinto(precinto_sanitario)
+            PrecintoSanitarioDAO(conexion_circuito).crear(
+                precinto_sanitario, remito.id_remito
+            )
+            envio = Envio(150, remito, "Traslado central")
+            envio_dao = EnvioDAO(conexion_circuito)
+            envio_dao.crear(envio)
+            salida = datetime(2026, 11, 3, 13, 0, 0, 123456)
+            assert envio.iniciar(salida)
+            assert envio_dao.guardar_despacho(envio)
+            if precinto_roto:
+                assert precinto_sanitario.marcar_roto()
+            assert envio.registrar_llegada(salida + timedelta(hours=1))
+            recepcion = Recepcion(
+                160, envio, salida + timedelta(hours=1, minutes=15),
+                "Control de ingreso",
+            )
+            assert recepcion.procesar_recepcion()
+            RecepcionDAO(conexion_circuito).guardar_recepcion(recepcion)
+            resultado = ResultadoAnalisis(
+                170, muestra, recepcion.fecha_hora + timedelta(minutes=90),
+                "Hemograma dentro de parámetros", "Validado por laboratorio",
+            )
+            registrado = resultado.registrar_resultado()
+            assert registrado is (not precinto_roto)
+            if registrado:
+                ResultadoAnalisisDAO(conexion_circuito).guardar_resultado(
+                    resultado
+                )
+                assert orden.completar()
+                assert OrdenDerivacionLaboratorioDAO(
+                    conexion_circuito
+                ).actualizar(orden)
+            else:
+                assert ResultadoAnalisisDAO(
+                    conexion_circuito
+                ).obtener_por_muestra(muestra.id_muestra) is None
+            comprobante = ComprobanteAtencion(
+                180, atencion, atencion.fecha_hora + timedelta(minutes=30)
+            )
+            ComprobanteAtencionDAO(conexion_circuito).crear(comprobante)
+            conexion_circuito.commit()
+        return ruta
+
+    return persistir

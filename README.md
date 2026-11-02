@@ -6,14 +6,16 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 ## Estado actual
 
 Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1 a Persistencia 8 incorporan
+en memoria y están validados. Persistencia 1 a Persistencia 9 está implementada.
+Los incrementos P1 a P8 incorporan
 almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`,
 `AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna`,
 `AplicacionVacuna`, `OrdenDerivacionLaboratorio`, `MuestraBiologica`,
 `HistorialEstadoMuestra`, `ConservadoraIsotermica`, `PrecintoSanitario` y
 `RemitoBiologico`, `Envio`, `Recepcion`, `ResultadoAnalisis` y
 `ComprobanteAtencion`. El historial de estados se persiste como parte interna de
-`MuestraBiologicaDAO`:
+`MuestraBiologicaDAO`. P9 integra los cuatro reportes con datos persistidos y
+verifica el circuito completo cerrando y reabriendo la conexión:
 
 - Primer incremento: `Clinica`, `Veterinario`, `AgendaMedica` y `Turno`.
 - Segundo incremento: `Cliente`, `Mascota`, `HistoriaClinica`, `Atencion`,
@@ -50,7 +52,9 @@ Persistencia 3 incorpora `HistoriaClinica` y `Atencion`; Persistencia 4 agrega
 Persistencia 6 agrega `ConservadoraIsotermica`, `PrecintoSanitario` y
 `RemitoBiologico`; Persistencia 7 agrega `Envio` y `Recepcion`; y Persistencia 8
 incorpora `ResultadoAnalisis` y `ComprobanteAtencion`. El total verificado de tests
-se informa en la sección Pruebas.
+se informa en la sección Pruebas. Persistencia 9 completa las cargas opcionales
+para reportes, protege el responsable de la mascota y prueba ambos caminos de
+recepción en un archivo SQLite temporal con conexiones independientes.
 
 Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas e
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
@@ -82,7 +86,10 @@ Las relaciones almacenadas son unidireccionales: `Clinica -> Veterinario`,
 
 ## Clientes, mascotas e historia clínica
 
-- Toda `Mascota` tiene obligatoriamente un `Cliente` responsable.
+- Toda `Mascota` tiene obligatoriamente un `Cliente` responsable. El constructor
+  rechaza `None` y guarda `_responsable`; la propiedad pública `responsable` no
+  tiene setter. Intentar asignarle `None` u otro cliente produce `AttributeError`,
+  por lo que la API pública conserva el responsable durante la vida del objeto.
 - Una mascota puede tener una única `HistoriaClinica`. La primera asignación se
   conserva y no puede reemplazarse con una segunda.
 - `HistoriaClinica` almacena sus `Atencion` y evita registrar dos veces la misma
@@ -686,6 +693,96 @@ tests/persistencia/
 También se actualizaron `inicializar_bd.py`, las fixtures de persistencia, sus tests
 de inicialización y este README. El dominio, el DER y el UML no requieren cambios.
 
+## Persistencia 9: integración final y auditoría
+
+P9 cierra la integración de persistencia del MVP. La auditoría comparó las 21 tablas
+del DER con SQLite: columnas, tipos adaptados, PK, autoincremento, nulabilidad,
+unicidad, claves foráneas y enums coinciden. Se mantiene la arquitectura
+`sqlite3 + DAO`, una conexión compartida y el control externo de transacciones.
+No se agregan entidades, tablas, columnas ni capas de arquitectura.
+
+El responsable de `Mascota` se expone mediante una propiedad sin setter. El DAO
+continúa leyendo `mascota.responsable` tanto al crear como al actualizar. La
+persistencia conserva su API de actualización: si se necesita representar otro
+estado para una prueba de FK, puede construirse otra mascota con el mismo ID;
+no se incorpora una operación de cambio de responsable al dominio.
+
+Las lecturas básicas siguen recuperando objetos parciales por defecto.
+`obtener_por_id()` no cambia su comportamiento. Sólo se extienden los listados
+necesarios para alimentar las estrategias existentes:
+
+- `AtencionDAO.listar(cargar_ordenes=True)` recupera las órdenes mediante
+  `OrdenDerivacionLaboratorioDAO.listar_por_atencion()` y restaura técnicamente
+  `_ordenes_derivacion`.
+- `MascotaDAO.listar(cargar_aplicaciones=True)` recupera las aplicaciones mediante
+  `AplicacionVacunaDAO.listar_por_mascota()` y restaura técnicamente
+  `_aplicaciones_vacuna`, incluyendo la vacuna de cada aplicación.
+
+Ambas opciones son keyword-only y su valor por defecto es `False`. La hidratación
+no llama `agregar_orden_derivacion()` ni `agregar_aplicacion_vacuna()`, no escribe
+en SQLite y no mezcla ni duplica las colecciones de distintas entidades. Los DAO
+auxiliares reciben la misma conexión; sus imports no forman ciclos.
+
+La integración con Strategy se realiza componiendo objetos desde el código
+llamador, sin SQL específico de reportes ni consultas SQLite dentro de estrategias:
+
+```python
+atenciones = atencion_dao.listar(cargar_ordenes=True)
+remitos = remito_dao.listar()
+mascotas = mascota_dao.listar(cargar_aplicaciones=True)
+vacunas = vacuna_dao.listar()
+
+envios = []
+for remito in remitos:
+    envio = envio_dao.obtener_por_remito(remito.id_remito)
+    if envio is not None:
+        envios.append(envio)
+```
+
+Esas colecciones alimentan, respectivamente, `ReporteAtencionesDerivaciones`,
+`ReporteMuestrasRechazadas`, `ReporteVacunasPendientes` (con fecha de referencia
+explícita) y `ReporteTiemposTransitoProcesamiento`. Se conserva el alcance actual
+de los reportes y no se agrega `EnvioDAO.listar()`.
+
+Los dos escenarios integrales usan `tmp_path / "veterinaria.db"`. Registran
+cliente, mascota, historia, clínica, veterinario, agenda, turno, vacunación,
+atención, orden y muestra; luego recorren empaquetado, despacho, llegada y
+recepción, y emiten un comprobante. Las operaciones de dominio preceden a la
+persistencia de sus efectos. Un commit externo confirma el circuito antes de
+cerrar la conexión; una conexión nueva y nuevos DAO recuperan las entidades.
+
+Con precinto intacto, el envío termina `ENTREGADO`, el remito `RECIBIDO` y la
+muestra `ANALIZADA`, con historial exacto:
+
+```text
+EXTRAIDA -> EMPAQUETADA -> EN_TRANSITO -> RECIBIDA -> ANALIZADA
+```
+
+Se recuperan tanto el resultado de análisis como el comprobante. Con precinto roto
+después del despacho, envío y remito conservan esos estados finales y la muestra
+queda `RECHAZADA`, con historial exacto:
+
+```text
+EXTRAIDA -> EMPAQUETADA -> EN_TRANSITO -> RECHAZADA
+```
+
+`registrar_resultado()` devuelve `False` y no se guarda un resultado; el comprobante
+sí se persiste. Ambos escenarios verifican fechas, asociaciones por ID, integridad
+referencial y estados tras reabrir. Otros cuatro tests ejecutan las estrategias
+sobre datos recuperados, incluyendo una mascota vacunada y otra con pendiente,
+y un remito sin envío que se descarta al componer el reporte de tiempos.
+
+Se mantienen estos límites: no hay identity map ni caché; dos consultas pueden
+reconstruir instancias distintas del mismo registro y deben compararse por IDs y
+valores. El rollback revierte SQLite, no los objetos Python. El llamador debe
+ejecutar las operaciones de dominio antes de persistir sus efectos y recargar los
+objetos cuando necesite recuperar el estado de la base después de un rollback.
+
+Los archivos nuevos son `tests/persistencia/test_integracion_completa.py` y
+`tests/persistencia/test_reportes_persistidos.py`. Se ajustaron `mascota.py`,
+`mascota_dao.py`, `atencion_dao.py`, sus tests, las fixtures y este README. El esquema
+SQLite, el DBML, el PUML, las estrategias y `AGENTS.md` permanecen sin cambios.
+
 ## Vacunación
 
 - `Mascota` mantiene una colección de `AplicacionVacuna`; cada aplicación conoce
@@ -818,7 +915,7 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest
 ```
 
-La suite completa contiene actualmente 730 casos y finaliza sin fallos.
+La suite completa contiene actualmente 740 casos y finaliza sin fallos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
@@ -867,6 +964,9 @@ con microsegundos, restricciones de integridad, reconstrucción sin operaciones 
 negocio, análisis de muestras recibidas, rechazo de muestras no analizadas,
 historial sin duplicados y control externo de transacciones tanto exitosas como
 fallidas.
+Los tests de Persistencia 9 verifican la protección del responsable, los listados
+opcionales sin operaciones de negocio, aislamiento de colecciones, ambos circuitos
+integrales con cierre y reapertura y los cuatro reportes con datos persistidos.
 
 ## Documentación
 
@@ -876,6 +976,9 @@ fallidas.
 La fuente UML se mantiene como diagrama de dominio, State y Strategy; no incorpora
 DAO ni clases de persistencia. Su SVG queda pendiente de regeneración porque
 PlantUML no está disponible en el entorno actual.
+El SVG del DER contiene las tablas y columnas esperadas, pero su correspondencia
+completa con las restricciones del DBML debe certificarse regenerándolo. Ambos
+artefactos derivados quedan pendientes; no se instalaron ni descargaron herramientas.
 
 Los diagramas también incluyen el diseño previsto para incrementos posteriores.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
@@ -886,7 +989,7 @@ remitos, envíos y recepciones utilizadas por el esquema SQLite para bases nueva
 
 ## Próximas etapas
 
-La persistencia de las entidades del MVP quedó implementada hasta resultados de
-análisis y comprobantes de atención en Persistencia 8. Permanecen pendientes la
-integración y auditoría final de persistencia (P9), la revisión e integración final
-y la definición del momento de liberación de `ConservadoraIsotermica`.
+Persistencia 1 a 9 está completa para el alcance actual del MVP, incluida su
+integración y auditoría. Permanecen pendientes la regeneración de los SVG, la
+revisión final general del TP y la definición del momento de liberación de
+`ConservadoraIsotermica`.
