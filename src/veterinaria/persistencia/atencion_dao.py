@@ -18,6 +18,9 @@ class AtencionDAO:
         self._orden_dao = OrdenDerivacionLaboratorioDAO(conexion)
 
     def crear(self, atencion: Atencion, id_historia: int) -> None:
+        if atencion.id_atencion is None:
+            raise ValueError("Atencion requiere un id_atencion explícito.")
+
         fecha_hora = atencion.fecha_hora
         tipo = atencion.tipo
         with closing(self._conexion.cursor()) as cursor:

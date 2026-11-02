@@ -5,8 +5,110 @@ Sistema para una red de clínicas veterinarias y derivación de muestras a un la
 
 ## Estado actual
 
-Los nueve primeros incrementos del dominio están implementados en Python, funcionan
-en memoria y están validados. Persistencia 1 a Persistencia 9 está implementada.
+El MVP está funcionalmente completo para el alcance del TP:
+
+- Dominio clínico, vacunación, laboratorio y transporte implementados en Python.
+- State para el ciclo de vida de `MuestraBiologica` y Strategy para cuatro reportes.
+- Persistencia P1–P9 terminada: SQLite mediante `sqlite3`, 19 DAO, conexión
+  compartida, SQL parametrizado y transacciones controladas por el llamador.
+- Integración completa con cierre y reapertura real de SQLite, tanto con precinto
+  intacto como roto, y reportes sobre datos recuperados.
+
+El total final de casos verificados figura en [Pruebas](#pruebas). El estado de los
+diagramas derivados se detalla en [Documentación](#documentación).
+
+## Estructura del proyecto
+
+```text
+Veterinaria/
+├── src/veterinaria/
+│   ├── dominio/
+│   │   ├── clinica/
+│   │   ├── vacunacion/
+│   │   ├── laboratorio/
+│   │   └── transporte/
+│   ├── patrones/
+│   │   ├── state/
+│   │   └── strategy/
+│   └── persistencia/
+├── tests/
+│   └── persistencia/
+├── docs/
+│   ├── der/
+│   ├── enunciado/
+│   └── uml/
+├── requirements.txt
+└── pytest.ini
+```
+
+| Carpeta | Contenido |
+|---|---|
+| `dominio/clinica/` | Clientes, mascotas, historias, atenciones, comprobantes, veterinarios, agenda y turnos. |
+| `dominio/vacunacion/` | Vacunas y aplicaciones. |
+| `dominio/laboratorio/` | Órdenes, muestras, historial y resultados. |
+| `dominio/transporte/` | Conservadoras, precintos, remitos, envíos y recepciones. |
+| `patrones/state/` | Estados y transiciones de `MuestraBiologica`. |
+| `patrones/strategy/` | Generador y estrategias de los cuatro reportes. |
+| `persistencia/` | Conexión SQLite, inicialización del esquema y DAO. |
+| `tests/` | Pruebas de dominio y reportes; `tests/persistencia/` incluye DAO e integración. |
+| `docs/` | DER, UML y enunciado del TP. |
+
+Las carpetas `dominio/`, `patrones/` y `persistencia/` pertenecen a
+`src/veterinaria/`. Las secciones siguientes describen las reglas y decisiones de
+cada módulo sin requerir navegar todos los archivos.
+
+## Preparación y ejecución
+
+El entorno verificado utiliza **Python 3.12.3 y pytest 9.1.1**. Para reproducirlo,
+usar Python 3.12 y ejecutar desde la raíz del repositorio:
+
+1. Clonar el proyecto y entrar en su carpeta:
+
+   ```console
+   git clone https://github.com/juansarey/Veterinaria.git
+   cd Veterinaria
+   ```
+
+2. Crear un entorno virtual:
+
+   ```console
+   python -m venv .venv
+   ```
+
+   Activarlo en PowerShell:
+
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   En `cmd.exe`, usar `.venv\Scripts\activate.bat`. También se puede trabajar sin
+   activar el entorno, reemplazando `python` por `.\.venv\Scripts\python.exe` en
+   los comandos siguientes.
+
+3. Instalar las dependencias de pruebas:
+
+   ```console
+   python -m pip install -r requirements.txt
+   ```
+
+   `requirements.txt` contiene únicamente `pytest` y no fija su versión. El dominio
+   y la persistencia usan la biblioteca estándar de Python, incluido `sqlite3`;
+   no necesitan instalar un servidor de base de datos.
+
+4. Ejecutar la suite completa:
+
+   ```console
+   python -m pytest -p no:cacheprovider
+   ```
+
+   Con el entorno activado también puede usarse `pytest -p no:cacheprovider`.
+   `pytest.ini` agrega `src` a la ruta de imports. Las pruebas crean bases aisladas
+   en memoria o archivos temporales, sin requerir una base preparada manualmente.
+
+## Recorrido de implementación
+
+Los siguientes incrementos ya están implementados; se conservan como historial
+de las decisiones que dieron lugar al modelo actual.
 Los incrementos P1 a P8 incorporan
 almacenamiento para `Cliente`, `Mascota`, `Clinica`, `Veterinario`,
 `AgendaMedica`, `Turno`, `HistoriaClinica`, `Atencion`, `Vacuna`,
@@ -60,8 +162,8 @@ Los procesos obligatorios principales del enunciado ya cubren clientes, mascotas
 historias clínicas, atenciones, órdenes de laboratorio, empaquetado, envío, recepción,
 rechazo por precinto roto, resultados de análisis y comprobantes de atención.
 También están implementados los dos patrones de diseño obligatorios, State y
-Strategy, y cuatro reportes no triviales. Las entidades que no se enumeraron como
-persistidas todavía funcionan exclusivamente en memoria.
+Strategy, y cuatro reportes no triviales. State y Strategy operan sobre objetos
+del dominio; sus algoritmos no necesitan tablas propias.
 
 ## Agenda y turnos
 
@@ -139,6 +241,10 @@ por nombre. No existen conexiones globales.
 
 Todos los datos variables se envían mediante parámetros `?`. Los DAO conservan los
 IDs explícitos de los objetos y no asignan identificadores mediante `lastrowid`.
+Cada `crear()` exige el ID de la entidad y rechaza `None` con `ValueError` antes de
+ejecutar SQL. SQLite conserva `AUTOINCREMENT` como mecanismo técnico de sus tablas;
+el DAO no lo utiliza para generar IDs del dominio. La excepción es `id_agenda`,
+un identificador técnico generado por SQLite que no pertenece a `AgendaMedica`.
 Tampoco ejecutan `commit`: el código que coordina una operación decide si confirma
 con `conexion.commit()` o revierte con `conexion.rollback()`, por lo que ambos DAO
 pueden participar en una misma transacción.
@@ -912,10 +1018,10 @@ públicas existentes.
 Desde la raíz del repositorio, con Python y pytest disponibles:
 
 ```console
-python -m pytest
+python -m pytest -p no:cacheprovider
 ```
 
-La suite completa contiene actualmente 740 casos y finaliza sin fallos.
+La suite completa contiene actualmente 747 casos y finaliza sin fallos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
@@ -926,30 +1032,30 @@ También cubren estados de conservadoras y precintos, reserva de conservadoras,
 empaquetado y despacho de remitos, envíos, registro de llegada, recepción según el
 estado del precinto, rechazo de muestras, prevención de cambios parciales y registro
 de resultados con transición de muestras recibidas a `ANALIZADA`. También cubren la
-construcción y las referencias de los comprobantes de atención. Los 39 tests del
+construcción y las referencias de los comprobantes de atención. Los tests del
 noveno incremento verifican el cambio y la delegación de estrategias, los cuatro
 reportes, sus casos vacíos y múltiples, los promedios de tiempos y que las consultas
-no modifiquen el dominio. Los 49 tests de Persistencia 1 verifican conexión e
+no modifiquen el dominio. Los tests de Persistencia 1 verifican conexión e
 inicialización, ABMC, reconstrucción de responsables, fechas ISO, SQL parametrizado,
 restricciones de integridad, claves foráneas y control externo de transacciones.
-Los 81 tests de Persistencia 2 verifican la inicialización de sus cinco tablas, el
+Los tests de Persistencia 2 verifican la inicialización de sus cinco tablas, el
 ABMC de clínicas, veterinarios, agendas y turnos, los filtros por clínica o
 veterinario, las conversiones ISO, la restauración de enums, la carga independiente
 de asociaciones, las restricciones de integridad y las transacciones externas.
-Los 43 tests de Persistencia 3 verifican las tablas de historias y atenciones, sus
+Los tests de Persistencia 3 verifican las tablas de historias y atenciones, sus
 operaciones DAO, filtros, orden determinista, conversiones ISO, valores opcionales,
 integridad, carga simple, reconstrucción sin ejecutar reglas de registro, FK
 hacia mascota e historia sin reasignación y control externo de transacciones.
-Los 42 tests de Persistencia 4 verifican las tablas y DAO de vacunas y aplicaciones,
+Los tests de Persistencia 4 verifican las tablas y DAO de vacunas y aplicaciones,
 IDs explícitos, orden de listados, mapeo booleano, fechas ISO, valores opcionales,
 integridad, reconstrucción de vacunas, carga simple de mascotas, relaciones fijas,
 eliminaciones protegidas por FK y transacciones externas.
-Los 61 tests de Persistencia 5 verifican sus tres tablas, ambos DAO, todos los
+Los tests de Persistencia 5 verifican sus tres tablas, ambos DAO, todos los
 estados de orden y muestra, reconstrucción sin transiciones ni nuevos eventos,
 historial inmutable y orden estable, consistencia State/historial, comparación de
 prefijo, actualizaciones incrementales sin duplicados, claves foráneas, eliminación
 protegida y transacciones externas.
-Los 63 tests de Persistencia 6 verifican sus tres tablas y DAO, estados y
+Los tests de Persistencia 6 verifican sus tres tablas y DAO, estados y
 restricciones de integridad, la FK final nullable de muestras, reconstrucción sin
 operaciones de negocio, carga de clínica, conservadora, precinto y muestras,
 asociación idempotente sin duplicar historial, rechazo de reasignaciones y control
@@ -967,6 +1073,9 @@ fallidas.
 Los tests de Persistencia 9 verifican la protección del responsable, los listados
 opcionales sin operaciones de negocio, aislamiento de colecciones, ambos circuitos
 integrales con cierre y reapertura y los cuatro reportes con datos persistidos.
+El cierre incorpora siete pruebas de rechazo de `id=None` en los DAO antiguos:
+comprueban `ValueError`, ausencia de SQL e inserciones y conservación del trabajo
+pendiente hasta el rollback explícito del llamador.
 
 ## Documentación
 
@@ -974,22 +1083,43 @@ integrales con cierre y reapertura y los cuatro reportes con datos persistidos.
 - [DER editable](docs/der/BD_TP_Veterinaria.dbml) y [diagrama SVG](docs/der/BD_TP_Veterinaria.svg).
 
 La fuente UML se mantiene como diagrama de dominio, State y Strategy; no incorpora
-DAO ni clases de persistencia. Su SVG queda pendiente de regeneración porque
-PlantUML no está disponible en el entorno actual.
+DAO ni clases de persistencia. Su SVG se regeneró desde el PUML actual con
+PlantUML 1.2024.3, disponible en la extensión local de VS Code. `EstadoRemito`
+contiene únicamente `GENERADO`, `DESPACHADO` y `RECIBIDO`.
 El SVG del DER contiene las tablas y columnas esperadas, pero su correspondencia
-completa con las restricciones del DBML debe certificarse regenerándolo. Ambos
-artefactos derivados quedan pendientes; no se instalaron ni descargaron herramientas.
+completa con las restricciones del DBML no pudo certificarse mediante regeneración:
+no se encontró un renderizador DBML local disponible. Ese SVG se conserva sin
+modificaciones. No se instalaron ni descargaron herramientas.
 
-Los diagramas también incluyen el diseño previsto para incrementos posteriores.
+Las fuentes editables representan el modelo final del MVP.
 El DER conserva `id_agenda` como identificador técnico de persistencia; el objeto
 de dominio no lo utiliza. `agenda_medica.id_veterinario` es único y los días
 laborales se almacenan en `agenda_medica_dia`, con clave compuesta
 `(id_agenda, dia)`. El DER ya representa las relaciones finales entre muestras,
 remitos, envíos y recepciones utilizadas por el esquema SQLite para bases nuevas.
 
-## Próximas etapas
+## Limitaciones del alcance
 
-Persistencia 1 a 9 está completa para el alcance actual del MVP, incluida su
-integración y auditoría. Permanecen pendientes la regeneración de los SVG, la
-revisión final general del TP y la definición del momento de liberación de
-`ConservadoraIsotermica`.
+Estas decisiones delimitan el MVP y deben tenerse en cuenta al utilizarlo:
+
+- La inicialización crea el esquema para bases nuevas; no migra bases históricas.
+- Las lecturas son parciales por defecto. El llamador carga y compone las
+  asociaciones necesarias; P9 ofrece cargas opcionales de órdenes y aplicaciones
+  para reportes.
+- No existe identity map ni caché de entidades: lecturas independientes pueden
+  producir objetos distintos para el mismo ID.
+- Un rollback revierte SQLite, no los objetos Python ya modificados. Para recuperar
+  el estado persistido deben recargarse.
+- La liberación automática de `ConservadoraIsotermica` no está definida; existe
+  `liberar()`, pero no forma parte del flujo automático de recepción.
+- La interfaz gráfica no forma parte del alcance. La ejecución y demostración se
+  realizan mediante código Python y pruebas.
+
+## Cierre del MVP
+
+El dominio, State, Strategy, los cuatro reportes y Persistencia P1–P9 están
+terminados para el alcance actual. La auditoría y el incremento final de cierre
+completan la consistencia de IDs explícitos y la documentación de ejecución.
+Los circuitos con precinto intacto y roto se verifican tras cerrar y reabrir SQLite.
+Queda pendiente certificar el SVG del DER mediante regeneración cuando se disponga
+de una herramienta adecuada; su fuente DBML es la referencia vigente.

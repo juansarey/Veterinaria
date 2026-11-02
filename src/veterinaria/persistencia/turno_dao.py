@@ -14,6 +14,9 @@ class TurnoDAO:
         self._mascota_dao = MascotaDAO(conexion)
 
     def crear(self, turno: Turno, id_veterinario: int) -> None:
+        if turno.id_turno is None:
+            raise ValueError("Turno requiere un id_turno explícito.")
+
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""
                 INSERT INTO turno

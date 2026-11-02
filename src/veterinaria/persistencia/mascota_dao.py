@@ -16,6 +16,9 @@ class MascotaDAO:
         self._aplicacion_dao = AplicacionVacunaDAO(conexion)
 
     def crear(self, mascota: Mascota) -> None:
+        if mascota.id_mascota is None:
+            raise ValueError("Mascota requiere un id_mascota explícito.")
+
         fecha = mascota.fecha_nacimiento
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""

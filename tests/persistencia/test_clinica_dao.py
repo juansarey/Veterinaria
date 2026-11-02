@@ -5,6 +5,37 @@ import pytest
 from veterinaria.dominio.clinica.clinica import Clinica
 
 
+def test_id_none_se_rechaza_sin_sql_y_conserva_transaccion(
+    conexion, clinica_dao, clinica
+):
+    conexion.execute(
+        "INSERT INTO vacuna (id_vacuna, nombre, especie) VALUES (?, ?, ?)",
+        (999, "Trabajo pendiente", "Perro"),
+    )
+    assert conexion.in_transaction
+    clinica.id_clinica = None
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        with pytest.raises(ValueError, match="id_clinica"):
+            clinica_dao.crear(clinica)
+    finally:
+        conexion.set_trace_callback(None)
+
+    assert sentencias == []
+    assert conexion.in_transaction
+    assert conexion.execute("SELECT COUNT(*) FROM clinica").fetchone()[0] == 0
+    assert conexion.execute(
+        "SELECT nombre FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone()[0] == "Trabajo pendiente"
+
+    conexion.rollback()
+    assert not conexion.in_transaction
+    assert conexion.execute(
+        "SELECT id_vacuna FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone() is None
+
+
 def test_crear_y_recuperar_conserva_datos(clinica_dao, clinica):
     clinica_dao.crear(clinica)
     recuperada = clinica_dao.obtener_por_id(30)

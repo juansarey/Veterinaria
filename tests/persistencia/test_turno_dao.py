@@ -19,6 +19,42 @@ def _persistir_dependencias(
     veterinario_dao.crear(veterinario, clinica.id_clinica)
 
 
+def test_id_none_se_rechaza_sin_sql_y_conserva_transaccion(
+    conexion, cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
+    turno_dao, cliente, mascota, clinica, veterinario, turno
+):
+    _persistir_dependencias(
+        cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
+        cliente, mascota, clinica, veterinario
+    )
+    conexion.execute(
+        "INSERT INTO vacuna (id_vacuna, nombre, especie) VALUES (?, ?, ?)",
+        (999, "Trabajo pendiente", "Perro"),
+    )
+    assert conexion.in_transaction
+    turno.id_turno = None
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        with pytest.raises(ValueError, match="id_turno"):
+            turno_dao.crear(turno, veterinario.id_veterinario)
+    finally:
+        conexion.set_trace_callback(None)
+
+    assert sentencias == []
+    assert conexion.in_transaction
+    assert conexion.execute("SELECT COUNT(*) FROM turno").fetchone()[0] == 0
+    assert conexion.execute(
+        "SELECT nombre FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone()[0] == "Trabajo pendiente"
+
+    conexion.rollback()
+    assert not conexion.in_transaction
+    assert conexion.execute(
+        "SELECT id_vacuna FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone() is None
+
+
 def test_crear_y_recuperar_conserva_datos_mascota_y_responsable(
     conexion, cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
     turno_dao, cliente, mascota, clinica, veterinario, turno

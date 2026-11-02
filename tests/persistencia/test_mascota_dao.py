@@ -9,6 +9,38 @@ from veterinaria.dominio.vacunacion.aplicacion_vacuna import AplicacionVacuna
 from veterinaria.dominio.vacunacion.vacuna import Vacuna
 
 
+def test_id_none_se_rechaza_sin_sql_y_conserva_transaccion(
+    conexion, cliente_dao, mascota_dao, cliente, mascota
+):
+    cliente_dao.crear(cliente)
+    conexion.execute(
+        "INSERT INTO vacuna (id_vacuna, nombre, especie) VALUES (?, ?, ?)",
+        (999, "Trabajo pendiente", "Perro"),
+    )
+    assert conexion.in_transaction
+    mascota.id_mascota = None
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        with pytest.raises(ValueError, match="id_mascota"):
+            mascota_dao.crear(mascota)
+    finally:
+        conexion.set_trace_callback(None)
+
+    assert sentencias == []
+    assert conexion.in_transaction
+    assert conexion.execute("SELECT COUNT(*) FROM mascota").fetchone()[0] == 0
+    assert conexion.execute(
+        "SELECT nombre FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone()[0] == "Trabajo pendiente"
+
+    conexion.rollback()
+    assert not conexion.in_transaction
+    assert conexion.execute(
+        "SELECT id_vacuna FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone() is None
+
+
 def test_crear_y_recuperar_datos_y_responsable(
     conexion, cliente_dao, mascota_dao, cliente, mascota
 ):

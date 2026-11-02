@@ -26,6 +26,44 @@ def _persistir_dependencias(
     historia_clinica_dao.crear(historia_clinica, mascota.id_mascota)
 
 
+def test_id_none_se_rechaza_sin_sql_y_conserva_transaccion(
+    conexion, cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
+    historia_clinica_dao, atencion_dao, cliente, mascota, clinica,
+    veterinario, historia_clinica, atencion
+):
+    _persistir_dependencias(
+        cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
+        historia_clinica_dao, cliente, mascota, clinica, veterinario,
+        historia_clinica
+    )
+    conexion.execute(
+        "INSERT INTO vacuna (id_vacuna, nombre, especie) VALUES (?, ?, ?)",
+        (999, "Trabajo pendiente", "Perro"),
+    )
+    assert conexion.in_transaction
+    atencion.id_atencion = None
+    sentencias = []
+    conexion.set_trace_callback(sentencias.append)
+    try:
+        with pytest.raises(ValueError, match="id_atencion"):
+            atencion_dao.crear(atencion, historia_clinica.id_historia)
+    finally:
+        conexion.set_trace_callback(None)
+
+    assert sentencias == []
+    assert conexion.in_transaction
+    assert conexion.execute("SELECT COUNT(*) FROM atencion").fetchone()[0] == 0
+    assert conexion.execute(
+        "SELECT nombre FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone()[0] == "Trabajo pendiente"
+
+    conexion.rollback()
+    assert not conexion.in_transaction
+    assert conexion.execute(
+        "SELECT id_vacuna FROM vacuna WHERE id_vacuna = ?", (999,)
+    ).fetchone() is None
+
+
 def test_crear_y_recuperar_conserva_datos_tipo_fecha_y_veterinario(
     conexion, cliente_dao, mascota_dao, clinica_dao, veterinario_dao,
     historia_clinica_dao, atencion_dao, cliente, mascota, clinica,

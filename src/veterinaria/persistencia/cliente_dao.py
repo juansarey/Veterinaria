@@ -11,6 +11,9 @@ class ClienteDAO:
         self._conexion = conexion
 
     def crear(self, cliente: Cliente) -> None:
+        if cliente.id_cliente is None:
+            raise ValueError("Cliente requiere un id_cliente explícito.")
+
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""
                 INSERT INTO cliente

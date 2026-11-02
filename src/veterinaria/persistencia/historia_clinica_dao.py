@@ -12,6 +12,9 @@ class HistoriaClinicaDAO:
         self._conexion = conexion
 
     def crear(self, historia: HistoriaClinica, id_mascota: int) -> None:
+        if historia.id_historia is None:
+            raise ValueError("HistoriaClinica requiere un id_historia explícito.")
+
         fecha = historia.fecha_apertura
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""

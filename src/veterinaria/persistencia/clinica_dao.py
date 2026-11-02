@@ -11,6 +11,9 @@ class ClinicaDAO:
         self._conexion = conexion
 
     def crear(self, clinica: Clinica) -> None:
+        if clinica.id_clinica is None:
+            raise ValueError("Clinica requiere un id_clinica explícito.")
+
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""
                 INSERT INTO clinica (id_clinica, nombre, direccion, telefono)

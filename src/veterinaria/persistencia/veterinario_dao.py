@@ -11,6 +11,9 @@ class VeterinarioDAO:
         self._conexion = conexion
 
     def crear(self, veterinario: Veterinario, id_clinica: int) -> None:
+        if veterinario.id_veterinario is None:
+            raise ValueError("Veterinario requiere un id_veterinario explícito.")
+
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""
                 INSERT INTO veterinario
