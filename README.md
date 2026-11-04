@@ -13,6 +13,9 @@ El MVP está funcionalmente completo para el alcance del TP:
   compartida, SQL parametrizado y transacciones controladas por el llamador.
 - Integración completa con cierre y reapertura real de SQLite, tanto con precinto
   intacto como roto, y reportes sobre datos recuperados.
+- Capa de servicios (`servicios/`) y aplicación de escritorio con Flet (`interfaz/`) de
+  cinco secciones, con datos de demostración y exportación de reportes a PDF y CSV. Ver
+  [Interfaz gráfica y capa de servicios](#interfaz-gráfica-y-capa-de-servicios).
 
 El total final de casos verificados figura en [Pruebas](#pruebas). El estado de los
 diagramas derivados se detalla en [Documentación](#documentación).
@@ -30,9 +33,14 @@ Veterinaria/
 │   ├── patrones/
 │   │   ├── state/
 │   │   └── strategy/
-│   └── persistencia/
+│   ├── persistencia/
+│   ├── servicios/
+│   ├── interfaz/
+│   └── main.py
 ├── tests/
-│   └── persistencia/
+│   ├── persistencia/
+│   ├── servicios/
+│   └── interfaz/
 ├── docs/
 │   ├── der/
 │   ├── enunciado/
@@ -50,6 +58,9 @@ Veterinaria/
 | `patrones/state/` | Estados y transiciones de `MuestraBiologica`. |
 | `patrones/strategy/` | Generador y estrategias de los cuatro reportes. |
 | `persistencia/` | Conexión SQLite, inicialización del esquema y DAO. |
+| `servicios/` | Casos de uso: transacciones, IDs, acciones en un paso, reportes, exportación PDF/CSV y datos de demostración. |
+| `interfaz/` | Aplicación Flet: ventana principal y cinco secciones con pestañas. |
+| `main.py` | Punto de entrada de la aplicación de escritorio. |
 | `tests/` | Pruebas de dominio y reportes; `tests/persistencia/` incluye DAO e integración. |
 | `docs/` | DER, UML y enunciado del TP. |
 
@@ -91,9 +102,10 @@ usar Python 3.12 y ejecutar desde la raíz del repositorio:
    python -m pip install -r requirements.txt
    ```
 
-   `requirements.txt` contiene únicamente `pytest` y no fija su versión. El dominio
-   y la persistencia usan la biblioteca estándar de Python, incluido `sqlite3`;
-   no necesitan instalar un servidor de base de datos.
+   `requirements.txt` contiene `pytest`, `flet[all]` (interfaz) y `reportlab` (PDF) sin
+   fijar versiones; la interfaz se verificó con Flet 1.0.5 y ReportLab 4.4. El dominio y
+   la persistencia usan la biblioteca estándar de Python, incluido `sqlite3`; no
+   necesitan instalar un servidor de base de datos.
 
 4. Ejecutar la suite completa:
 
@@ -1013,6 +1025,89 @@ historiales. Las entidades del dominio no conocen al generador ni a las estrateg
 los reportes aprovechan exclusivamente las relaciones unidireccionales y las APIs
 públicas existentes.
 
+## Interfaz gráfica y capa de servicios
+
+La interfaz sigue la separación de la guía de Flet de la cátedra:
+
+```text
+Presentación (interfaz/, Flet)
+   ↓ llama a
+Negocio / casos de uso (servicios/)
+   ↓ usa
+Dominio (dominio/, patrones/)  +  DAO (persistencia/)
+   ↓
+sqlite3 → SQLite
+```
+
+### Ejecución
+
+Desde la raíz del repositorio y con el entorno virtual activo:
+
+```console
+python -m pip install -r requirements.txt
+python src/veterinaria/main.py --demo
+```
+
+- `--demo` carga datos de demostración si la base está vacía (2 clínicas, 3 veterinarios con
+  agenda, 5 clientes, 6 mascotas, vacunas, atenciones, comprobantes y remitos en distintos
+  estados: aceptado y analizado, rechazado por precinto roto, en tránsito y una muestra
+  pendiente de empaquetar). Sin `--demo` se parte de una base vacía.
+- `--web` abre la aplicación en el navegador (`http://localhost:8550`).
+- También puede usarse `flet run src/veterinaria/main.py`.
+- La base es `veterinaria.db` en la carpeta desde la que se ejecuta; `VETERINARIA_DB` permite
+  indicar otra ruta. Los PDF y CSV van a una carpeta `exportaciones/` junto a la base.
+
+### Cinco secciones
+
+| Sección | Pestañas | Procesos |
+|---|---|---|
+| **Clientes y mascotas** | Clientes · Mascotas | 1 y 2: altas, edición, bajas con confirmación, búsqueda e historia clínica de cada mascota (atenciones y vacunas). |
+| **Turnos** | Agenda de turnos · Veterinarios y agendas | Reserva con control de agenda y superposición; clínicas, veterinarios y agenda semanal. |
+| **Atención** | Atenciones · Vacunas | 3 y 7: registro de la atención con control de vacunas, derivación al laboratorio en un paso y comprobante en PDF. |
+| **Laboratorio** | Empaquetado · Envío y recepción · Resultados · Seguimiento | 4, 5, 6 y 7: remito y precinto, despacho, recepción con verificación del precinto, resultados y línea de tiempo de cada muestra. |
+| **Reportes** | — | Los cuatro reportes con vista previa y exportación a PDF o CSV. |
+
+Para que sea fácil de usar, varios pasos del circuito se resuelven con una sola acción:
+registrar una mascota abre su historia clínica; *Derivar a laboratorio* emite la orden y la
+muestra; *Empaquetar y precintar* genera el remito, empaqueta las muestras y coloca el precinto
+(con un código automático si no se ingresa uno); *Registrar recepción* anota la llegada y
+verifica el precinto. Las fechas se escriben sólo con números (las barras se agregan solas), los
+selectores admiten búsqueda por escritura y los estados se muestran con etiquetas de color.
+
+### Recorrido sugerido para la demostración
+
+1. **Clientes y mascotas** → alta de una mascota sin responsable: no se guarda (RN01).
+2. **Turnos** → reservar dos turnos que se pisen: el segundo se rechaza; uno fuera de horario también.
+3. **Atención** → registrar una atención de *Toby* o *Mora*: se bloquea por vacunas obligatorias
+   pendientes; aplicarlas en **Vacunas** y volver a intentar. Derivar la atención a laboratorio.
+4. **Laboratorio › Empaquetado** → elegir la clínica, la conservadora y las muestras: se emite el remito y el precinto.
+5. **Envío y recepción** → despachar; recibir con el precinto íntegro (muestras *Recibida*) o
+   destildado (muestras *Rechazada*).
+6. **Resultados** → cargar el resultado de una muestra recibida; una rechazada no puede analizarse.
+7. **Seguimiento** → línea de tiempo inmutable de cada muestra. **Atención** → comprobante en PDF. **Reportes**.
+
+### Capa de servicios
+
+`Servicios(ruta_bd)` (`servicios/fachada.py`) agrupa `ClinicaServicio`, `AtencionServicio`,
+`LaboratorioServicio` y `ReporteServicio`. Cada método público es una unidad de trabajo: abre una
+conexión, vuelve a leer los objetos necesarios, ejecuta primero la operación de dominio y luego el
+DAO, y hace `commit`; ante cualquier error hace `rollback`. Las acciones en un paso
+(`derivar`, `empaquetar`, `recibir_remito`) ocurren en una sola transacción: si algo falla no queda
+nada a medias. Las violaciones de reglas se informan como `ErrorNegocio` con un mensaje legible y
+los errores de integridad de SQLite (DNI o matrícula repetidos, claves foráneas) se traducen al
+mismo tipo. Los IDs explícitos que exigen los DAO los genera el servicio (`MAX(id) + 1`). La capa no
+agrega reglas nuevas: usa `Veterinario.agregar_turno()`, `Mascota.registrar_atencion()`,
+`RemitoBiologico`, `Envio`, `Recepcion`, `ResultadoAnalisis` y las estrategias existentes; sólo suma
+mensajes que explican por qué una operación fue rechazada. `servicios/datos_demo.py` crea los datos
+de demostración a través de esos mismos servicios.
+
+Los cuatro reportes se generan con `GeneradorReportes` y las estrategias existentes; el servicio sólo
+compone los datos (por ejemplo, agrega mascota y clínica al reporte de atenciones). El CSV usa `;`
+como separador y UTF-8 con BOM para abrirse bien en Excel.
+
+No se modificaron el dominio, los DAO, las estrategias, el DER ni el UML. La facturación y el
+resto de los procesos opcionales siguen fuera del alcance.
+
 ## Pruebas
 
 Desde la raíz del repositorio, con Python y pytest disponibles:
@@ -1021,7 +1116,7 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest -p no:cacheprovider
 ```
 
-La suite completa contiene actualmente 747 casos y finaliza sin fallos.
+La suite completa contiene actualmente 766 casos y finaliza sin fallos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
@@ -1077,6 +1172,12 @@ El cierre incorpora siete pruebas de rechazo de `id=None` en los DAO antiguos:
 comprueban `ValueError`, ausencia de SQL e inserciones y conservación del trabajo
 pendiente hasta el rollback explícito del llamador.
 
+Los 19 casos nuevos cubren la capa de servicios (`tests/servicios/`) —circuito completo con
+precinto intacto y roto, acciones en un paso, turnos, vacunas obligatorias, datos de demostración,
+exportación PDF/CSV y los cuatro reportes— y un recorrido de la interfaz con una página simulada
+(`tests/interfaz/`), sin abrir ventanas. Estas pruebas no reemplazan una revisión visual de la
+aplicación.
+
 ## Documentación
 
 - [UML editable](docs/uml/DG_TP_Veterinaria.puml) y [diagrama SVG](docs/uml/DG_TP_Veterinaria.svg).
@@ -1112,8 +1213,9 @@ Estas decisiones delimitan el MVP y deben tenerse en cuenta al utilizarlo:
   el estado persistido deben recargarse.
 - La liberación automática de `ConservadoraIsotermica` no está definida; existe
   `liberar()`, pero no forma parte del flujo automático de recepción.
-- La interfaz gráfica no forma parte del alcance. La ejecución y demostración se
-  realizan mediante código Python y pruebas.
+- La interfaz es de escritorio (Flet) y de uso local: sin autenticación de usuarios ni
+  acceso concurrente de varias instancias a la misma base.
+- Los servicios generan los IDs con `MAX(id) + 1`, adecuado para un único usuario.
 
 ## Cierre del MVP
 

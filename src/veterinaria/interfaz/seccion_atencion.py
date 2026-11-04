@@ -1,0 +1,192 @@
+"""Atención clínica, derivación a laboratorio, comprobantes y vacunación."""
+
+from datetime import date
+
+import flet as ft
+
+from veterinaria.dominio.clinica.atencion import TipoAtencion
+from veterinaria.interfaz import componentes as c
+from veterinaria.interfaz.exportaciones import carpeta_exportacion, nombre_archivo
+from veterinaria.interfaz.pantalla import Pantalla, Seccion
+from veterinaria.servicios.exportador import exportar_comprobante_pdf
+
+TIPOS_MUESTRA = ["Sangre", "Orina", "Materia fecal", "Piel / raspado", "Biopsia", "Otra"]
+
+
+class PestanaAtenciones(Pantalla):
+    nombre, icono = "Atenciones", ft.Icons.MEDICAL_SERVICES
+    COLS = [("fecha_txt", "Fecha"), ("mascota", "Mascota"), ("tipo", "Tipo"), ("veterinario", "Veterinario"),
+            ("motivo", "Motivo"), ("diagnostico", "Diagnóstico"), ("derivaciones", "Derivaciones"),
+            ("comprobante", "Comprobante")]
+
+    def construir(self):
+        self.mascota = c.selector("Mascota", 320, self._al_elegir_mascota)
+        self.estado_historia = ft.Text("Seleccione una mascota.", size=12)
+        self.estado_vacunas = ft.Text("", size=12, weight=ft.FontWeight.W_500)
+        self.btn_historia = c.boton("Abrir historia clínica", self._abrir_historia, ft.Icons.FOLDER_OPEN, False)
+        self.btn_historia.visible = False
+        self.vet = c.selector("Veterinario", 300)
+        self.fecha = c.campo_fecha_hora("Fecha y hora", 190)
+        self.tipo = c.desplegable_fijo("Tipo", [t.name for t in TipoAtencion], TipoAtencion.CONSULTA.name, 150)
+        self.motivo, self.diagnostico = c.campo("Motivo", 300), c.campo("Diagnóstico", 300)
+        self.observaciones = c.campo("Observaciones", 300)
+        # derivación
+        self.atencion = c.selector("Atención a derivar", 420)
+        self.estudio = c.campo("Estudio solicitado", 260, hint_text="Hemograma, urianálisis…")
+        self.tipo_muestra = c.desplegable_fijo("Tipo de muestra", TIPOS_MUESTRA, "Sangre", 190)
+        self.obs_orden = c.campo("Observaciones para el laboratorio", 320)
+        self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
+        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+            c.tarjeta(self.mascota, self.estado_historia, self.estado_vacunas, self.btn_historia,
+                      c.fila(self.vet, self.fecha, self.tipo),
+                      c.fila(self.motivo, self.diagnostico, self.observaciones),
+                      c.boton("Registrar atención", self._registrar, ft.Icons.SAVE),
+                      encabezado="Nueva atención"),
+            c.tarjeta(self.atencion, c.fila(self.estudio, self.tipo_muestra, self.obs_orden),
+                      c.nota("Se emite la orden de derivación y se registra la muestra extraída."),
+                      c.boton("Derivar a laboratorio", self._derivar, ft.Icons.BIOTECH),
+                      encabezado="Derivar a laboratorio"),
+            c.contenedor_tabla(self.tabla),
+        ])
+
+    def refrescar(self):
+        c.reponer_fecha(self.fecha)
+        c.cargar_selector(self.mascota, self.srv.clinica.listar_mascotas())
+        c.cargar_selector(self.vet, self.srv.clinica.listar_veterinarios())
+        self.atenciones = self.srv.atencion.listar_atenciones()
+        c.cargar_selector(self.atencion, self.atenciones)
+        c.llenar_tabla(self.tabla, self.COLS, self.atenciones, lambda a: [
+            c.boton_icono(ft.Icons.BIOTECH, "Derivar a laboratorio", lambda e, a=a: self._elegir_derivar(a)),
+            c.boton_icono(ft.Icons.RECEIPT_LONG, "Comprobante (PDF)", lambda e, a=a: self._comprobante(a))])
+        self._estado_mascota()
+
+    # ---------------------------------------------------------- estado de la mascota
+    def _al_elegir_mascota(self, e=None):
+        self._estado_mascota()
+        self.app.actualizar()
+
+    def _estado_mascota(self):
+        idm = c.id_de(self.mascota)
+        if idm is None:
+            self.estado_historia.value, self.estado_vacunas.value = "Seleccione una mascota.", ""
+            self.btn_historia.visible = False
+            return
+        historia = self.srv.atencion.obtener_historia(idm)
+        self.estado_historia.value = (
+            f"Historia clínica abierta el {historia['fecha_apertura']}." if historia
+            else "La mascota no tiene historia clínica: ábrala antes de registrar la atención.")
+        self.btn_historia.visible = historia is None
+        pendientes = self.srv.atencion.vacunas_pendientes(idm)
+        self.estado_vacunas.value = ("Vacunas obligatorias pendientes: " + ", ".join(pendientes) +
+                                     ". Aplíquelas en la pestaña Vacunas." if pendientes
+                                     else "Vacunas obligatorias al día.")
+        self.estado_vacunas.color = ft.Colors.RED_700 if pendientes else ft.Colors.GREEN_700
+
+    def _abrir_historia(self, e=None):
+        self.ejecutar(lambda: self.srv.atencion.abrir_historia(c.requerir(self.mascota, "una mascota")),
+                      "Historia clínica abierta.")
+
+    # ------------------------------------------------------------------ acciones
+    def _registrar(self, e=None):
+        def accion():
+            return self.srv.atencion.registrar_atencion(
+                c.requerir(self.mascota, "una mascota"), c.requerir(self.vet, "un veterinario"),
+                c.leer_fecha_hora(self.fecha.value, "Fecha y hora"), TipoAtencion[self.tipo.value],
+                self.motivo.value, self.diagnostico.value, self.observaciones.value)
+        if self.ejecutar(accion, "Atención registrada."):
+            self.motivo.value = self.diagnostico.value = self.observaciones.value = ""
+
+    def _elegir_derivar(self, atencion):
+        self.atencion.value = str(atencion["id"])
+        self.app.actualizar()
+
+    def _derivar(self, e=None):
+        def accion():
+            return self.srv.laboratorio.derivar(
+                c.requerir(self.atencion, "una atención"), self.estudio.value, self.tipo_muestra.value,
+                observaciones=self.obs_orden.value)
+        res = self.ejecutar(accion)
+        if isinstance(res, dict):
+            self.estudio.value = self.obs_orden.value = ""
+            self.app.ok(f"Orden #{res['id_orden']} emitida y muestra M-{res['id_muestra']:04d} extraída. "
+                        "Siga en Laboratorio › Empaquetado.")
+
+    def _comprobante(self, atencion):
+        """Emite el comprobante (si falta), lo exporta a PDF y lo abre."""
+        def accion():
+            id_at = atencion["id"]
+            if self.srv.atencion.obtener_comprobante(id_at) is None:
+                self.srv.atencion.emitir_comprobante(id_at)
+            comp = self.srv.atencion.obtener_comprobante(id_at)
+            ruta = carpeta_exportacion(self.app.ruta_bd) / nombre_archivo(f"comprobante_{id_at}", "pdf")
+            exportar_comprobante_pdf(ruta, comp)
+            return ruta
+        ruta = self.ejecutar(accion)
+        if ruta:
+            self.app.ok(f"Comprobante emitido: {ruta}")
+            self.app.abrir_archivo(ruta)
+
+
+class PestanaVacunas(Pantalla):
+    nombre, icono = "Vacunas", ft.Icons.VACCINES
+    COLS_V = [("id", "ID"), ("nombre", "Vacuna"), ("especie", "Especie"), ("obligatoria", "Obligatoria")]
+    COLS_A = [("vacuna", "Vacuna"), ("fecha_aplicacion", "Aplicada"),
+              ("proxima_dosis", "Próxima dosis"), ("estado", "Estado")]
+
+    def construir(self):
+        self.v_nombre = c.campo("Nombre de la vacuna", 260)
+        self.v_especie = c.desplegable_fijo("Especie", c.ESPECIES, "Perro")
+        self.v_oblig = ft.Checkbox(label="Obligatoria", value=True)
+        self.mascota = c.selector("Mascota", 320, self._al_elegir)
+        self.vacuna = c.selector("Vacuna", 300)
+        self.f_aplic = c.campo_fecha("Aplicación", 150, date.today())
+        self.f_prox = c.campo_fecha("Próxima dosis", 150)
+        self.resumen = ft.Text("", size=12, weight=ft.FontWeight.W_500)
+        self.t_vac, self.t_apl = c.crear_tabla(self.COLS_V), c.crear_tabla(self.COLS_A)
+        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+            c.tarjeta(self.mascota, self.resumen, c.fila(self.vacuna, self.f_aplic, self.f_prox),
+                      c.nota("La próxima dosis es opcional; sin ella la aplicación no vence."),
+                      c.boton("Registrar aplicación", self._aplicar, ft.Icons.VACCINES),
+                      c.contenedor_tabla(self.t_apl), encabezado="Vacunas de la mascota"),
+            c.tarjeta(c.fila(self.v_nombre, self.v_especie, self.v_oblig),
+                      c.boton("Registrar vacuna", self._crear_vacuna, ft.Icons.ADD),
+                      c.contenedor_tabla(self.t_vac), encabezado="Catálogo de vacunas"),
+        ])
+
+    def refrescar(self):
+        vacunas = self.srv.atencion.listar_vacunas()
+        c.cargar_selector(self.vacuna, vacunas)
+        c.llenar_tabla(self.t_vac, self.COLS_V, vacunas)
+        c.cargar_selector(self.mascota, self.srv.clinica.listar_mascotas())
+        self._aplicaciones()
+
+    def _aplicaciones(self):
+        idm = c.id_de(self.mascota)
+        c.llenar_tabla(self.t_apl, self.COLS_A, self.srv.atencion.listar_aplicaciones(idm) if idm else [])
+        pendientes = self.srv.atencion.vacunas_pendientes(idm) if idm else []
+        self.resumen.value = ("Pendientes: " + ", ".join(pendientes) if pendientes
+                              else ("Vacunas obligatorias al día." if idm else ""))
+        self.resumen.color = ft.Colors.RED_700 if pendientes else ft.Colors.GREEN_700
+
+    def _al_elegir(self, e=None):
+        self._aplicaciones()
+        self.app.actualizar()
+
+    def _crear_vacuna(self, e=None):
+        if self.ejecutar(lambda: self.srv.atencion.crear_vacuna(
+                self.v_nombre.value, self.v_especie.value, self.v_oblig.value), "Vacuna registrada."):
+            self.v_nombre.value = ""
+
+    def _aplicar(self, e=None):
+        def accion():
+            return self.srv.atencion.registrar_aplicacion(
+                c.requerir(self.mascota, "una mascota"), c.requerir(self.vacuna, "una vacuna"),
+                c.leer_fecha(self.f_aplic.value, "Aplicación"),
+                c.leer_fecha_opcional(self.f_prox.value, "Próxima dosis"))
+        self.ejecutar(accion, "Aplicación registrada.")
+
+
+class SeccionAtencion(Seccion):
+    nombre, icono = "Atención", ft.Icons.MEDICAL_SERVICES
+    subtitulo = "Consultas, control de vacunas obligatorias, derivación al laboratorio y comprobantes"
+    PESTANAS = [PestanaAtenciones, PestanaVacunas]

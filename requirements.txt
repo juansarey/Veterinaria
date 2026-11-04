@@ -1,1 +1,3 @@
 pytest
+flet[all]
+reportlab

@@ -399,7 +399,7 @@ Por el momento no se desarrollarán:
 - derivaciones para cirugías de alta complejidad;
 - facturación completa;
 - autenticación de usuarios;
-- interfaces web complejas;
+- interfaces web complejas (la aplicación de escritorio con Flet sí forma parte del proyecto);
 - patrón Observer.
 
 Estas funcionalidades podrán incorporarse posteriormente si el alcance del proyecto lo requiere.
@@ -483,7 +483,8 @@ Veterinaria/
 │       │   ├── state/
 │       │   └── strategy/
 │       │
-│       ├── servicios/
+│       ├── servicios/      # casos de uso, transacciones, exportación PDF/CSV, datos demo
+│       ├── interfaz/       # app Flet: cinco secciones con pestañas
 │       ├── persistencia/
 │       └── main.py
 │
@@ -518,6 +519,18 @@ Pruebas:
 
 ```text
 pytest
+```
+
+Interfaz gráfica:
+
+```text
+Flet (escritorio) — guía de la cátedra
+```
+
+Reportes exportables:
+
+```text
+ReportLab (PDF) y csv de la biblioteca estándar
 ```
 
 Modelado DER:
@@ -658,15 +671,13 @@ Reportes
 ### Próximo paso
 
 ```text
-Implementar el primer incremento:
-
-Clinica
-Veterinario
-AgendaMedica
-Turno
-
-junto con sus tests.
+Revisión visual de la interfaz Flet con los datos de demostración (--demo)
+y ajustes de presentación.
 ```
+
+El dominio, los patrones, los reportes, la persistencia, la capa de servicios y la interfaz
+Flet están implementados. La interfaz sólo invoca a `servicios/`: no contiene SQL ni reglas
+de negocio.
 
 ---
 
