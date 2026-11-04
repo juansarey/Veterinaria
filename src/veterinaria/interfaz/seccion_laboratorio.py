@@ -3,7 +3,9 @@
 import flet as ft
 
 from veterinaria.interfaz import componentes as c
+from veterinaria.interfaz.exportaciones import carpeta_exportacion, nombre_archivo
 from veterinaria.interfaz.pantalla import Pantalla, Seccion
+from veterinaria.servicios.exportador import exportar_comprobante_resultado_pdf
 
 
 class PestanaEmpaquetado(Pantalla):
@@ -13,25 +15,27 @@ class PestanaEmpaquetado(Pantalla):
             ("estado", "Estado")]
 
     def construir(self):
-        self.clinica = c.selector("Clínica de origen", 260, self._al_elegir_clinica)
-        self.conservadora = c.selector("Conservadora disponible", 260)
-        self.codigo_cons = c.campo("Nueva conservadora (código)", 230)
-        self.fecha = c.campo_fecha_hora("Fecha de empaquetado", 210)
+        self.clinica = c.selector("Clínica de origen", 240, self._al_elegir_clinica)
+        self.conservadora = c.selector("Conservadora disponible", 240)
+        self.codigo_cons = c.campo("Nueva conservadora (código)", 220)
+        self.fecha = c.campo_fecha_hora("Fecha de empaquetado", 260)
         self.precinto = c.campo("Código del precinto (opcional)", 240)
         self.muestras_box = ft.Column(spacing=0)
         self.checks: dict[int, ft.Checkbox] = {}
+        marco_muestras = ft.Container(
+            ft.Column([self.muestras_box], scroll=ft.ScrollMode.ALWAYS), height=130,
+            padding=ft.Padding.all(8), border=ft.Border.all(1, ft.Colors.BLUE_GREY_100), border_radius=8)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+        return c.pagina(
             c.tarjeta(c.nota("Se genera el remito biológico y el precinto sanitario; las muestras pasan a "
                              "«Empaquetada» y la conservadora queda en uso."),
-                      c.fila(self.clinica, self.conservadora, self.fecha),
-                      c.fila(self.codigo_cons, c.boton("Agregar conservadora", self._crear_cons, ft.Icons.ADD, False)),
+                      c.fila(self.clinica, self.conservadora, self.fecha, self.codigo_cons,
+                             c.boton("Agregar conservadora", self._crear_cons, ft.Icons.ADD, False)),
                       ft.Text("Muestras extraídas pendientes de envío:", weight=ft.FontWeight.W_500),
-                      self.muestras_box, self.precinto,
-                      c.boton("Empaquetar y precintar", self._empaquetar, ft.Icons.INVENTORY_2),
+                      marco_muestras,
+                      c.fila(self.precinto, c.boton("Empaquetar y precintar", self._empaquetar, ft.Icons.INVENTORY_2)),
                       encabezado="Empaquetar muestras en una conservadora"),
-            c.contenedor_tabla(self.tabla),
-        ])
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         lab = self.srv.laboratorio
@@ -90,25 +94,27 @@ class PestanaEnvio(Pantalla):
             ("llegada", "Llegada"), ("precinto", "Precinto"), ("recepcion", "Recepción")]
 
     def construir(self):
-        self.remito = c.selector("Remito listo para despachar", 380)
+        self.remito = c.selector("Remito listo para despachar", 360)
         self.salida = c.campo_fecha_hora("Salida", 200)
-        self.obs_envio = c.campo("Observaciones", 260)
-        self.envio = c.selector("Envío en tránsito", 380)
+        self.obs_envio = c.campo("Observaciones", 220)
+        self.envio = c.selector("Envío en tránsito", 360)
         self.f_recepcion = c.campo_fecha_hora("Recepción", 200)
         self.integro = ft.Checkbox(label="Precinto íntegro, sin signos de apertura", value=True)
         self.obs_rec = c.campo("Observaciones", 260)
         self.tabla = c.crear_tabla(self.COLS)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
-            c.tarjeta(self.remito, c.fila(self.salida, self.obs_envio),
-                      c.nota("Sólo se despachan remitos con conservadora, muestras y un precinto intacto."),
-                      c.boton("Despachar", self._despachar, ft.Icons.LOCAL_SHIPPING),
-                      encabezado="1. Despacho desde la clínica"),
-            c.tarjeta(self.envio, c.fila(self.f_recepcion, self.obs_rec), self.integro,
-                      c.nota("Si el precinto llega roto, las muestras quedan «Rechazadas» y no se procesan."),
-                      c.boton("Registrar recepción", self._recibir, ft.Icons.FACT_CHECK),
-                      encabezado="2. Recepción en el laboratorio central"),
-            c.contenedor_tabla(self.tabla),
-        ])
+        despacho = c.mitad(c.tarjeta(
+            self.remito, c.fila(self.salida, self.obs_envio),
+            c.nota("Sólo se despachan remitos con conservadora, muestras y un precinto intacto."),
+            c.boton("Despachar", self._despachar, ft.Icons.LOCAL_SHIPPING),
+            encabezado="1. Despacho desde la clínica"))
+        recepcion = c.mitad(c.tarjeta(
+            self.envio, c.fila(self.f_recepcion, self.obs_rec), self.integro,
+            c.nota("Si el precinto llega roto, las muestras quedan «Rechazadas» y no se procesan."),
+            c.boton("Registrar recepción", self._recibir, ft.Icons.FACT_CHECK),
+            encabezado="2. Recepción en el laboratorio central"))
+        return c.pagina(
+            ft.Row([despacho, recepcion], spacing=14, vertical_alignment=ft.CrossAxisAlignment.START),
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         lab = self.srv.laboratorio
@@ -153,20 +159,26 @@ class PestanaEnvio(Pantalla):
 
 class PestanaResultados(Pantalla):
     nombre, icono = "Resultados", ft.Icons.ASSIGNMENT_TURNED_IN
+    COLS = [("id_txt", "Muestra"), ("tipo", "Tipo"), ("estudio", "Estudio"), ("mascota", "Mascota"),
+            ("clinica", "Clínica"), ("fecha_resultado", "Resultado del"), ("resumen", "Resumen")]
 
     def construir(self):
         self.muestra = c.selector("Muestra", 480)
         self.resultado = ft.TextField(label="Resultado del análisis", multiline=True, min_lines=3,
-                                      max_lines=6, width=520)
+                                      max_lines=4, width=860)
         self.obs = c.campo("Observaciones", 520)
-        self.fecha = c.campo_fecha_hora("Fecha del resultado", 210)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
-            c.tarjeta(self.muestra, self.resultado, self.obs, self.fecha,
+        self.fecha = c.campo_fecha_hora("Fecha del resultado", 250)
+        self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
+        return c.pagina(
+            c.tarjeta(c.fila(self.muestra, self.fecha), self.resultado,
+                      c.fila(self.obs, c.boton("Registrar resultado y emitir comprobante", self._registrar,
+                                               ft.Icons.ASSIGNMENT_TURNED_IN)),
                       c.nota("Sólo las muestras recibidas pueden analizarse; las rechazadas figuran "
-                             "para que quede claro por qué no se procesan."),
-                      c.boton("Registrar resultado", self._registrar, ft.Icons.ASSIGNMENT_TURNED_IN),
+                             "para que quede claro por qué no se procesan. Al registrar el resultado "
+                             "se emite el comprobante en PDF."),
                       encabezado="Resultado de análisis"),
-        ])
+            c.subtitulo_texto("Resultados emitidos"),
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         c.reponer_fecha(self.fecha)
@@ -176,14 +188,34 @@ class PestanaResultados(Pantalla):
                 sufijo = " · RECHAZADA" if m["estado"] == "RECHAZADA" else ""
                 opciones.append({"id": m["id"], "etiqueta": m["etiqueta"] + sufijo})
         c.cargar_selector(self.muestra, opciones)
+        c.llenar_tabla(self.tabla, self.COLS, self.srv.laboratorio.listar_resultados(), lambda m: [
+            c.boton_icono(ft.Icons.PICTURE_AS_PDF, "Comprobante de resultados (PDF)",
+                          lambda e, m=m: self._comprobante(m["id"], "Comprobante emitido"))])
 
     def _registrar(self, e=None):
+        id_muestra = c.id_de(self.muestra)
+
         def accion():
             return self.srv.laboratorio.registrar_resultado(
                 c.requerir(self.muestra, "una muestra"), self.resultado.value, self.obs.value,
                 c.leer_fecha_hora(self.fecha.value, "Fecha del resultado"))
-        if self.ejecutar(accion, "Resultado registrado: la muestra pasó a «Analizada»."):
+        if self.ejecutar(accion):
             self.resultado.value = self.obs.value = ""
+            self._comprobante(id_muestra, "Resultado registrado (muestra «Analizada»). Comprobante emitido")
+
+    def _comprobante(self, id_muestra, mensaje):
+        """Genera el comprobante de resultados en PDF y lo abre."""
+        def accion():
+            datos = self.srv.laboratorio.obtener_comprobante_resultado(id_muestra)
+            ruta = carpeta_exportacion(self.app.ruta_bd) / nombre_archivo(
+                f"comprobante_resultado_M{id_muestra:04d}", "pdf")
+            exportar_comprobante_resultado_pdf(ruta, datos)
+            return ruta
+        ruta = self.ejecutar(accion)
+        if ruta:
+            self.app.ok(f"{mensaje}: {ruta}")
+            self.app.abrir_archivo(ruta)
+            self.app.actualizar()
 
 
 class PestanaSeguimiento(Pantalla):
@@ -197,10 +229,9 @@ class PestanaSeguimiento(Pantalla):
                                                     "RECIBIDA", "ANALIZADA", "RECHAZADA"], "Todos", 200)
         self.filtro.on_select = self._filtrar
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
-            c.tarjeta(c.nota("Cada cambio de estado queda registrado y no puede modificarse."),
-                      self.filtro, c.contenedor_tabla(self.tabla), encabezado="Trazabilidad de muestras"),
-        ])
+        return c.pagina(
+            c.tarjeta(c.fila(self.filtro, c.nota("Cada cambio de estado queda registrado y no puede modificarse."))),
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         estado = self.filtro.value

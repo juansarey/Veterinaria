@@ -98,14 +98,81 @@ def formatear_fecha(texto: str, anterior: str = "", con_hora: bool = False) -> s
     return resultado
 
 
+LOCALE = ft.Locale("es", "AR")
+
+
+def _actualizar_control(control):
+    """Refleja el cambio en pantalla (si el control todavía no está en una página, no hace nada)."""
+    try:
+        control.update()
+    except Exception:
+        pass
+
+
+def _valor_o_ahora(texto: str, formato: str) -> datetime:
+    try:
+        return datetime.strptime((texto or "").strip(), formato)
+    except ValueError:
+        return datetime.now().replace(second=0, microsecond=0)
+
+
+def abrir_calendario(e, control: ft.TextField, con_hora: bool):
+    """Abre el calendario desplegable y escribe la fecha elegida en el campo
+    (conserva la hora si el campo es de fecha y hora)."""
+    formato = FMT_FECHA_HORA if con_hora else FMT_FECHA
+    actual = _valor_o_ahora(control.value, formato)
+
+    def al_elegir(ev):
+        elegida = ev.control.value
+        nuevo = actual.replace(year=elegida.year, month=elegida.month, day=elegida.day)
+        control.value = control.data = nuevo.strftime(formato)
+        _actualizar_control(control)
+
+    e.page.show_dialog(ft.DatePicker(
+        value=actual, first_date=datetime(1990, 1, 1), last_date=datetime(2100, 12, 31),
+        locale=LOCALE, help_text="Seleccionar fecha", cancel_text="Cancelar",
+        confirm_text="Aceptar", on_change=al_elegir))
+
+
+def abrir_reloj(e, control: ft.TextField, con_fecha: bool):
+    """Abre el selector de hora y escribe la hora elegida (HH:MM) en el campo."""
+    formato = FMT_FECHA_HORA if con_fecha else FMT_HORA
+    actual = _valor_o_ahora(control.value, formato)
+
+    def al_elegir(ev):
+        hora = ev.control.value
+        nuevo = actual.replace(hour=hora.hour, minute=hora.minute)
+        control.value = control.data = nuevo.strftime(formato)
+        _actualizar_control(control)
+
+    e.page.show_dialog(ft.TimePicker(
+        value=actual.time(), locale=LOCALE, help_text="Seleccionar hora", cancel_text="Cancelar",
+        confirm_text="Aceptar", hour_label_text="Hora", minute_label_text="Minuto",
+        on_change=al_elegir))
+
+
+def _boton_pequeno(icono, tooltip, on_click) -> ft.IconButton:
+    return ft.IconButton(icono, tooltip=tooltip, icon_size=20, icon_color=COLOR,
+                         padding=ft.Padding.all(4), on_click=on_click)
+
+
 def campo_fecha(etiqueta="Fecha", ancho=170, valor: date | datetime | None = None,
                 con_hora=False, **opciones) -> ft.TextField:
-    """Campo de fecha (o fecha y hora) con máscara. ``valor``: date/datetime o None."""
+    """Campo de fecha (o fecha y hora) con máscara y calendario desplegable.
+
+    ``valor``: date/datetime o None. En los campos con hora hay además un reloj para elegir la hora."""
     formato = FMT_FECHA_HORA if con_hora else FMT_FECHA
     texto = valor.strftime(formato) if valor else ""
+    ancho = max(ancho, 250 if con_hora else 175)
     control = campo(etiqueta, ancho, texto, input_filter=ft.InputFilter(regex_string=r"[0-9/: ]"),
                     hint_text="DD/MM/AAAA HH:MM" if con_hora else "DD/MM/AAAA", **opciones)
     control.data = texto
+    botones = [_boton_pequeno(ft.Icons.CALENDAR_MONTH, "Elegir fecha en el calendario",
+                              lambda e: abrir_calendario(e, control, con_hora))]
+    if con_hora:
+        botones.append(_boton_pequeno(ft.Icons.ACCESS_TIME, "Elegir hora",
+                                      lambda e: abrir_reloj(e, control, True)))
+    control.suffix = ft.Row(botones, tight=True, spacing=0)
 
     def al_escribir(e):
         nuevo = formatear_fecha(control.value, control.data, con_hora)
@@ -119,8 +186,17 @@ def campo_fecha(etiqueta="Fecha", ancho=170, valor: date | datetime | None = Non
     return control
 
 
-def campo_fecha_hora(etiqueta="Fecha y hora", ancho=200) -> ft.TextField:
+def campo_fecha_hora(etiqueta="Fecha y hora", ancho=250) -> ft.TextField:
     return campo_fecha(etiqueta, ancho, datetime.now(), con_hora=True)
+
+
+def campo_hora(etiqueta="Hora (HH:MM)", ancho=150, valor="") -> ft.TextField:
+    """Campo de hora con selector de reloj."""
+    control = campo(etiqueta, ancho, valor, input_filter=ft.InputFilter(regex_string=r"[0-9:]"),
+                    hint_text="HH:MM")
+    control.suffix = _boton_pequeno(ft.Icons.ACCESS_TIME, "Elegir hora",
+                                    lambda e: abrir_reloj(e, control, False))
+    return control
 
 
 def reponer_fecha(control: ft.TextField):
@@ -204,11 +280,29 @@ def llenar_tabla(tabla: ft.DataTable, columnas: list[tuple[str, str]], filas: li
             celdas.append(ft.DataCell(ft.Row(acciones(fila), spacing=0, tight=True)))
         rows.append(ft.DataRow(cells=celdas))
     tabla.rows = rows
+    marco = tabla.data
+    if isinstance(marco, ft.Container) and marco.data:   # alto justo hasta el máximo; después, barra propia
+        marco.height = min(marco.data, ALTO_ENCABEZADO + ALTO_FILA * len(filas))
 
 
-def contenedor_tabla(tabla: ft.DataTable) -> ft.Control:
-    """Permite desplazar horizontalmente las tablas anchas."""
-    return ft.Row(controls=[tabla], scroll=ft.ScrollMode.AUTO)
+ALTO_FILA = 52
+ALTO_ENCABEZADO = 66
+
+
+def contenedor_tabla(tabla: ft.DataTable, alto_max=380, expandir=False) -> ft.Control:
+    """Marco con barra de desplazamiento propia: al crecer el listado se mueve sólo la tabla
+    (no toda la pantalla). Las tablas anchas también se desplazan en horizontal.
+
+    ``expandir=True``: el marco ocupa todo el alto disponible de la pestaña (los cuadros de
+    arriba quedan fijos). Si no, mide lo justo hasta ``alto_max``."""
+    contenido = ft.Column([ft.Row([tabla], scroll=ft.ScrollMode.AUTO)],
+                          scroll=ft.ScrollMode.ALWAYS, expand=True)
+    if expandir:
+        marco = ft.Container(content=contenido, expand=True)
+    else:
+        marco = ft.Container(content=contenido, height=alto_max, data=alto_max)
+    tabla.data = marco
+    return marco
 
 
 # ---------------------------------------------------------------- estructura
@@ -219,16 +313,37 @@ def titulo(texto, subtitulo="") -> ft.Column:
     return ft.Column(controles, spacing=2)
 
 
+def subtitulo_texto(texto) -> ft.Text:
+    return ft.Text(texto, size=16, weight=ft.FontWeight.W_600)
+
+
 def nota(texto) -> ft.Text:
     return ft.Text(texto, size=12, color=ft.Colors.GREY_700)
 
 
-def tarjeta(*controles, encabezado: str | None = None) -> ft.Container:
+def tarjeta(*controles, encabezado: str | None = None, expandir=False) -> ft.Container:
+    """Cuadro blanco con sus controles. ``expandir=True`` lo hace ocupar el alto que sobra."""
     contenido = ([ft.Text(encabezado, size=16, weight=ft.FontWeight.W_600)] if encabezado else [])
     contenido += list(controles)
     return ft.Container(
-        content=ft.Column(controls=contenido, spacing=10, tight=True), padding=ft.Padding.all(16),
-        bgcolor=ft.Colors.WHITE, border=ft.Border.all(1, ft.Colors.BLUE_GREY_100), border_radius=10)
+        content=ft.Column(controls=contenido, spacing=10, tight=not expandir, expand=expandir),
+        padding=ft.Padding.all(16), bgcolor=ft.Colors.WHITE, expand=expandir,
+        border=ft.Border.all(1, ft.Colors.BLUE_GREY_100), border_radius=10)
+
+
+def mitad(control: ft.Control) -> ft.Control:
+    """Hace que un cuadro ocupe una parte igual del ancho dentro de una fila."""
+    control.expand = 1
+    return control
+
+
+def pagina(*controles, scroll=False) -> ft.Column:
+    """Disposición estándar de una pestaña: los cuadros ocupan todo el ancho y quedan fijos;
+    el listado (``contenedor_tabla(..., expandir=True)``) ocupa el alto restante con su
+    propia barra. Con ``scroll=True`` se desplaza toda la pestaña (para las que no entran)."""
+    return ft.Column(list(controles), spacing=14, expand=True,
+                     horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                     scroll=ft.ScrollMode.AUTO if scroll else None)
 
 
 def fila(*controles) -> ft.Row:

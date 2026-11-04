@@ -21,12 +21,11 @@ class PestanaClientes(Pantalla):
         self.buscar = c.campo("Buscar por nombre, apellido o DNI", 340, on_change=self._al_buscar)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         self.datos = []
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+        return c.pagina(
             c.tarjeta(self.encabezado, c.fila(self.nombre_f, self.apellido_f, self.dni_f),
                       c.fila(self.tel_f, self.email_f),
                       c.fila(c.boton("Guardar", self._guardar, ft.Icons.SAVE), self.btn_cancelar)),
-            self.buscar, c.contenedor_tabla(self.tabla),
-        ])
+            ft.Row([self.buscar]), c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_clientes()
@@ -104,13 +103,12 @@ class PestanaMascotas(Pantalla):
         self.btn_cancelar.visible = False
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         self.datos = []
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+        return c.pagina(
             c.tarjeta(self.encabezado, self.resp,
                       c.fila(self.nombre_f, self.especie, self.raza_f, self.nac_f, self.sexo),
                       c.nota("Al registrar una mascota se abre automáticamente su historia clínica."),
                       c.fila(c.boton("Guardar", self._guardar, ft.Icons.SAVE), self.btn_cancelar)),
-            c.contenedor_tabla(self.tabla),
-        ])
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_mascotas()

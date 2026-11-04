@@ -126,6 +126,7 @@ class LaboratorioServicio(ServicioBase):
                         filas.append({
                             "id": m.id_muestra, "tipo": m.tipo_muestra, "estado": estado,
                             "estudio": o.estudio_solicitado, "id_orden": o.id_orden,
+                            "id_atencion": a.id_atencion,
                             "id_remito": remito_de.get(m.id_muestra),
                             "mascota": mascota, "clinica": clinica,
                             "id_clinica": vet.get("id_clinica"),
@@ -446,6 +447,47 @@ class LaboratorioServicio(ServicioBase):
                     orden.completar()
                 orden_dao.actualizar(orden)
                 return
+
+    def listar_resultados(self) -> list[dict]:
+        """Muestras analizadas con los datos de su resultado."""
+        filas = []
+        for m in self.listar_muestras():
+            if m["estado"] != "ANALIZADA":
+                continue
+            r = self.obtener_resultado(m["id"])
+            if r is not None:
+                filas.append({**m, "id_txt": f"M-{m['id']:04d}", "fecha_resultado": r["fecha"],
+                              "resumen": r["resultado"][:60]})
+        return filas
+
+    def obtener_comprobante_resultado(self, id_muestra) -> dict:
+        """Datos del comprobante de resultados de una muestra analizada (para el PDF)."""
+        from veterinaria.servicios.atencion_servicio import AtencionServicio
+        from veterinaria.servicios.clinica_servicio import ClinicaServicio
+
+        muestra = next((m for m in self.listar_muestras() if m["id"] == id_muestra), None)
+        if muestra is None:
+            raise ErrorNegocio("La muestra no existe.")
+        resultado = self.obtener_resultado(id_muestra)
+        if resultado is None:
+            raise ErrorNegocio("La muestra todavía no tiene un resultado registrado.")
+        recepcion = next((h["fecha"] for h in self.historial_muestra(id_muestra)
+                          if h["estado"] == "RECIBIDA"), "")
+        atencion = next(a for a in AtencionServicio(self._ruta).listar_atenciones()
+                        if a["id"] == muestra["id_atencion"])
+        mascota = next(m for m in ClinicaServicio(self._ruta).listar_mascotas()
+                       if m["id"] == atencion["id_mascota"])
+        remito = next((r for r in self.listar_remitos() if r["id"] == muestra["id_remito"]), {})
+        return {
+            "numero": f"RES-{resultado['id']:04d}", "fecha_emision": fmt_fecha_hora(ahora()),
+            "muestra": f"M-{muestra['id']:04d}", "tipo_muestra": muestra["tipo"],
+            "estudio": muestra["estudio"], "mascota": mascota["etiqueta"].split(" [#")[0],
+            "responsable": mascota["responsable"], "clinica": muestra["clinica"],
+            "veterinario": atencion["veterinario"], "remito": f"R-{remito['id']:04d}" if remito else "—",
+            "precinto": remito.get("precinto", "—"), "extraccion": muestra["extraccion"],
+            "recepcion": recepcion, "fecha_resultado": resultado["fecha"],
+            "resultado": resultado["resultado"], "observaciones": resultado["observaciones"],
+        }
 
     def obtener_resultado(self, id_muestra) -> dict | None:
         with self._lectura() as con:

@@ -206,3 +206,41 @@ def test_datos_demo(tmp_path):
         toby = next(m for m in s.clinica.listar_mascotas() if m["nombre"] == "Toby")["id"]
         vet = s.clinica.listar_veterinarios()[0]["id"]
         s.atencion.registrar_atencion(toby, vet, datetime.now(), TipoAtencion.CONSULTA, "x")
+
+
+# ----------------------------------------------- duplicados, bajas y comprobante de resultados
+def test_mascota_duplicada_y_etiquetas_unicas(s, base):
+    with pytest.raises(ErrorNegocio, match="ya tiene registrada"):
+        s.clinica.crear_mascota(base["cli"], " firulais ", "perro")
+    otro = s.clinica.crear_cliente("Raúl", "Pérez", "30777666")          # mismo apellido
+    s.clinica.crear_mascota(otro, "Firulais", "Perro")
+    etiquetas = [m["etiqueta"] for m in s.clinica.listar_mascotas()]
+    assert len(set(etiquetas)) == 2 and all("[#" in e for e in etiquetas)
+
+
+def test_baja_de_mascota_con_historia_vacia_y_con_atenciones(s, base):
+    nueva = s.clinica.crear_mascota(base["cli"], "Nina", "Gato", abrir_historia=True)
+    s.clinica.eliminar_mascota(nueva)                                    # historia vacía: se elimina
+    assert all(m["id"] != nueva for m in s.clinica.listar_mascotas())
+    s.atencion.registrar_atencion(base["mas"], base["vet"], LUNES, TipoAtencion.CONSULTA, "x")
+    with pytest.raises(ErrorNegocio, match="no puede eliminarse"):
+        s.clinica.eliminar_mascota(base["mas"])
+    assert s.atencion.obtener_historia(base["mas"]) is not None          # rollback: nada se perdió
+
+
+def test_comprobante_de_resultados(s, base, tmp_path):
+    _, _, id_mu = _atencion_con_orden(s, base)
+    with pytest.raises(ErrorNegocio, match="todavía no tiene"):
+        s.laboratorio.obtener_comprobante_resultado(id_mu)
+    id_r, id_e = _despachado(s, base, id_mu)
+    s.laboratorio.registrar_recepcion(id_e, LUNES + timedelta(hours=2, minutes=15))
+    s.laboratorio.registrar_resultado(id_mu, "Normal\nsin hallazgos", "ok",
+                                      LUNES + timedelta(hours=4))
+    comp = s.laboratorio.obtener_comprobante_resultado(id_mu)
+    assert comp["mascota"] == "Firulais (Perro) - Pérez" and comp["clinica"] == "Clínica Centro"
+    assert comp["veterinario"].startswith("Gómez") and comp["precinto"].startswith("PRE-1")
+    assert comp["recepcion"] and comp["resultado"].startswith("Normal")
+    from veterinaria.servicios.exportador import exportar_comprobante_resultado_pdf
+    exportar_comprobante_resultado_pdf(tmp_path / "res.pdf", comp)
+    assert (tmp_path / "res.pdf").stat().st_size > 800
+    assert [f["id_txt"] for f in s.laboratorio.listar_resultados()] == [f"M-{id_mu:04d}"]

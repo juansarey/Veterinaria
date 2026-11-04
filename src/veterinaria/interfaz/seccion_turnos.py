@@ -18,23 +18,22 @@ class PestanaAgenda(Pantalla):
     def construir(self):
         self.vet = c.selector("Veterinario", 300)
         self.mascota = c.selector("Mascota", 300)
-        self.fecha = c.campo_fecha("Fecha", 150, date.today())
-        self.hora = c.campo("Hora (HH:MM)", 120, "10:00")
+        self.fecha = c.campo_fecha("Fecha", 180, date.today())
+        self.hora = c.campo_hora("Hora (HH:MM)", 150, "10:00")
         self.duracion = c.desplegable_fijo("Duración", ["15", "30", "45", "60"], "30", 110)
         self.motivo = c.campo("Motivo", 260)
-        self.dia = c.campo_fecha("Ver día", 150, date.today(), on_submit=self._ver)
+        self.dia = c.campo_fecha("Ver día", 180, date.today(), on_submit=self._ver)
         self.filtro_vet = c.selector("Filtrar veterinario", 280, self._ver)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
-            c.tarjeta(c.fila(self.vet, self.mascota), c.fila(self.fecha, self.hora, self.duracion, self.motivo),
+        return c.pagina(
+            c.tarjeta(c.fila(self.vet, self.mascota, self.fecha, self.hora, self.duracion),
+                      c.fila(self.motivo, c.boton("Reservar turno", self._reservar, ft.Icons.EVENT_AVAILABLE)),
                       c.nota("El turno debe estar dentro de la agenda del veterinario y no superponerse "
                              "con otro turno activo."),
-                      c.boton("Reservar turno", self._reservar, ft.Icons.EVENT_AVAILABLE),
                       encabezado="Nuevo turno"),
             c.tarjeta(c.fila(self.dia, self.filtro_vet, c.boton("Ver agenda", self._ver, ft.Icons.SEARCH, False),
                              c.boton("Ver todos", self._ver_todos, ft.Icons.LIST, False)),
-                      c.contenedor_tabla(self.tabla), encabezado="Agenda"),
-        ])
+                      c.contenedor_tabla(self.tabla, expandir=True), encabezado="Agenda", expandir=True))
 
     def refrescar(self):
         vets = self.srv.clinica.listar_veterinarios()
@@ -103,9 +102,9 @@ class PestanaProfesionales(Pantalla):
         self.v_mat, self.v_esp = c.campo("Matrícula", 140), c.campo("Especialidad", 200)
         self.vet_agenda = c.selector("Veterinario", 320, self._cargar_agenda)
         self.dias = {d: ft.Checkbox(label=t, value=False) for d, t in self.ETIQUETAS_DIAS.items()}
-        self.desde, self.hasta = c.campo("Desde (HH:MM)", 130, "08:00"), c.campo("Hasta (HH:MM)", 130, "16:00")
+        self.desde, self.hasta = c.campo_hora("Desde (HH:MM)", 160, "08:00"), c.campo_hora("Hasta (HH:MM)", 160, "16:00")
         self.t_cl, self.t_vet = c.crear_tabla(self.COLS_C), c.crear_tabla(self.COLS_V)
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+        return c.pagina(
             c.tarjeta(c.fila(self.cl_nombre, self.cl_dir, self.cl_tel),
                       c.boton("Registrar clínica", self._crear_clinica, ft.Icons.ADD),
                       c.contenedor_tabla(self.t_cl), encabezado="Clínicas"),
@@ -117,7 +116,7 @@ class PestanaProfesionales(Pantalla):
                       c.nota("Un mismo horario se aplica a todos los días marcados."),
                       c.boton("Guardar agenda", self._guardar_agenda, ft.Icons.SAVE),
                       encabezado="Agenda semanal del veterinario"),
-        ])
+            scroll=True)
 
     def refrescar(self):
         clinicas = self.srv.clinica.listar_clinicas()

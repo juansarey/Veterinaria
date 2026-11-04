@@ -40,6 +40,8 @@ class AplicacionVeterinaria:
         # Siempre claro: los fondos de la interfaz son claros y, con el tema del sistema en
         # modo oscuro, los textos saldrían en color claro y no se leerían.
         self.page.theme_mode = ft.ThemeMode.LIGHT
+        self.page.locale_configuration = ft.LocaleConfiguration(
+            supported_locales=[ft.Locale("es", "AR")], current_locale=ft.Locale("es", "AR"))
         self.page.bgcolor = "#F4F7FA"
         self.page.padding = 0
         self.page.add(ft.Row(expand=True, spacing=0, controls=[

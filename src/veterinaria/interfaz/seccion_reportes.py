@@ -29,15 +29,14 @@ class SeccionReportes(Pantalla):
         self.tabla = ft.DataTable(columns=[ft.DataColumn(ft.Text("—"))], rows=[],
                                   heading_row_color=ft.Colors.BLUE_GREY_50, column_spacing=18)
         self.actual = None
-        return ft.Column(spacing=14, scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+        return c.pagina(
             c.titulo("Reportes", "Vista previa en pantalla y exportación a PDF o CSV"),
-            c.tarjeta(c.fila(self.reporte, self.fecha_ref),
-                      c.fila(c.boton("Ver en pantalla", self._generar, ft.Icons.TABLE_VIEW),
+            c.tarjeta(c.fila(self.reporte, self.fecha_ref,
+                             c.boton("Ver en pantalla", self._generar, ft.Icons.TABLE_VIEW),
                              c.boton("Exportar PDF", lambda e: self._exportar("pdf"), ft.Icons.PICTURE_AS_PDF, False),
-                             c.boton("Exportar CSV", lambda e: self._exportar("csv"), ft.Icons.DOWNLOAD, False)),
-                      encabezado="Parámetros"),
-            self.titulo_rep, self.resumen, c.contenedor_tabla(self.tabla),
-        ])
+                             c.boton("Exportar CSV", lambda e: self._exportar("csv"), ft.Icons.DOWNLOAD, False))),
+            c.fila(self.titulo_rep, self.resumen),
+            c.contenedor_tabla(self.tabla, expandir=True))
 
     def refrescar(self):
         pass

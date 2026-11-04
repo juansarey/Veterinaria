@@ -62,7 +62,7 @@ class Seccion(Pantalla):
             content=ft.Column(expand=True, controls=[
                 ft.TabBar(tabs=[ft.Tab(label=h.nombre, icon=h.icono) for h in self.hijas]),
                 ft.TabBarView(expand=True, controls=[
-                    ft.Container(h.vista, padding=ft.Padding.only(top=12)) for h in self.hijas]),
+                    ft.Container(h.vista, padding=ft.Padding.only(top=12), expand=True) for h in self.hijas]),
             ]))
         return ft.Column(expand=True, spacing=8, controls=[c.titulo(self.nombre, self.subtitulo), tabs])
 

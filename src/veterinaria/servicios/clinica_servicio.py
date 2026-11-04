@@ -1,6 +1,8 @@
 """Procesos 1 y 2 (parte): clientes, mascotas, clínicas, veterinarios, agenda y turnos."""
 
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
+import sqlite3
+from collections import Counter
 from datetime import date
 
 from veterinaria.dominio.clinica.cliente import Cliente
@@ -10,6 +12,7 @@ from veterinaria.dominio.clinica.mascota import Mascota
 from veterinaria.dominio.clinica.turno import EstadoTurno, Turno
 from veterinaria.dominio.clinica.veterinario import Veterinario
 from veterinaria.persistencia.agenda_medica_dao import AgendaMedicaDAO
+from veterinaria.persistencia.atencion_dao import AtencionDAO
 from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
 from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
@@ -75,6 +78,13 @@ class ClinicaServicio(ServicioBase):
             responsable = ClienteDAO(con).obtener_por_id(id_cliente)
             if responsable is None:
                 raise ErrorNegocio("El responsable seleccionado no existe.")
+            for existente in MascotaDAO(con).listar():
+                if (existente.responsable.id_cliente == id_cliente
+                        and existente.nombre.strip().lower() == nombre.lower()
+                        and existente.especie.strip().lower() == especie.lower()):
+                    raise ErrorNegocio(
+                        f"{responsable.nombre} {responsable.apellido} ya tiene registrada una mascota "
+                        f"«{nombre}» ({especie}).")
             id_mascota = self._siguiente_id(con, "mascota")
             mascota = Mascota(id_mascota, nombre, especie, responsable,
                               (raza or "").strip(), fecha_nacimiento, (sexo or "").strip())
@@ -100,9 +110,18 @@ class ClinicaServicio(ServicioBase):
             dao.actualizar(nueva)
 
     def eliminar_mascota(self, id_mascota):
+        """Elimina la mascota y su historia clínica si está vacía (sin atenciones)."""
         with self._tx() as con:
-            if not MascotaDAO(con).eliminar(id_mascota):
-                raise ErrorNegocio("La mascota no existe.")
+            historia_dao = HistoriaClinicaDAO(con)
+            historia = historia_dao.obtener_por_mascota(id_mascota)
+            try:
+                if historia is not None and not AtencionDAO(con).listar_por_historia(historia.id_historia):
+                    historia_dao.eliminar(historia.id_historia)
+                if not MascotaDAO(con).eliminar(id_mascota):
+                    raise ErrorNegocio("La mascota no existe.")
+            except sqlite3.IntegrityError:
+                raise ErrorNegocio("La mascota tiene turnos, vacunas o atenciones registradas y "
+                                   "no puede eliminarse.") from None
 
     def listar_mascotas(self) -> list[dict]:
         with self._lectura() as con:
@@ -117,6 +136,10 @@ class ClinicaServicio(ServicioBase):
                     "responsable": f"{r.apellido}, {r.nombre}",
                     "etiqueta": f"{m.nombre} ({m.especie}) - {r.apellido}",
                 })
+            repetidas = Counter(f["etiqueta"] for f in filas)
+            for f in filas:                       # distingue mascotas con igual nombre y responsable
+                if repetidas[f["etiqueta"]] > 1:
+                    f["etiqueta"] += f" [#{f['id']}]"
             return filas
 
     # ------------------------------------------------------------- clínicas

@@ -1,5 +1,6 @@
 """Humo de la interfaz Flet con una página simulada (sin abrir ventanas)."""
 
+from datetime import datetime, time
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +19,7 @@ from veterinaria.servicios.fachada import Servicios
 class PaginaFalsa:
     def __init__(self):
         self.window = SimpleNamespace(width=0, height=0)
-        self.mensajes, self.dialogos, self.controles = [], [], []
+        self.mensajes, self.dialogos, self.pickers, self.controles = [], [], [], []
         self.title = self.theme = self.padding = self.bgcolor = None
 
     def add(self, *controles): self.controles.extend(controles)
@@ -28,6 +29,8 @@ class PaginaFalsa:
     def show_dialog(self, dialogo):
         if isinstance(dialogo, ft.SnackBar):
             self.mensajes.append(dialogo.content.value)
+        elif isinstance(dialogo, (ft.DatePicker, ft.TimePicker)):
+            self.pickers.append(dialogo)
         else:
             self.dialogos.append(dialogo.title.value)
 
@@ -88,6 +91,8 @@ def test_clientes_y_mascotas(ui):
     elegir(mas.resp); mas._guardar()
     assert "historia" in ultimo()
     assert app.servicios.atencion.obtener_historia(mas.datos[0]["id"]) is not None
+    mas.nombre_f.value = "firulais"; elegir(mas.resp); mas._guardar()       # mismo responsable y especie
+    assert "ya tiene registrada" in ultimo() and len(mas.datos) == 1
     mas._historia(mas.datos[0]); assert any("Historia clínica" in d for d in pag.dialogos)
     mas._pedir_baja(mas.datos[0]); assert "Confirmar" in pag.dialogos
 
@@ -199,3 +204,113 @@ def test_parsers_y_mascara():
     assert c.leer_fecha_opcional("") is None
     assert c.formatear_fecha("2511") == "25/11/"
     assert c.formatear_fecha("251120261030", "", True) == "25/11/2026 10:30"
+
+
+def test_calendario_y_reloj_en_los_campos_de_fecha(ui):
+    app, pag = ui
+    campo_fh = c.campo_fecha_hora("Fecha y hora")
+    campo_f = c.campo_fecha("Fecha")
+    hora = c.campo_hora("Hora", valor="10:00")
+    assert len(campo_fh.suffix.controls) == 2 and len(campo_f.suffix.controls) == 1 and hora.suffix
+    evento = SimpleNamespace(page=pag)
+
+    campo_fh.value = campo_fh.data = "02/11/2026 09:30"
+    c.abrir_calendario(evento, campo_fh, True)
+    pag.pickers[-1].on_change(SimpleNamespace(control=SimpleNamespace(value=datetime(2026, 12, 25))))
+    assert campo_fh.value == "25/12/2026 09:30"                         # conserva la hora
+    c.abrir_reloj(evento, campo_fh, True)
+    pag.pickers[-1].on_change(SimpleNamespace(control=SimpleNamespace(value=time(14, 5))))
+    assert campo_fh.value == "25/12/2026 14:05"
+
+    c.abrir_calendario(evento, campo_f, False)                          # campo vacío: parte de hoy
+    pag.pickers[-1].on_change(SimpleNamespace(control=SimpleNamespace(value=datetime(2027, 1, 3))))
+    assert campo_f.value == "03/01/2027"
+    c.abrir_reloj(evento, hora, False)
+    pag.pickers[-1].on_change(SimpleNamespace(control=SimpleNamespace(value=time(8, 45))))
+    assert hora.value == "08:45"
+    assert c.leer_fecha_hora(campo_fh.value).minute == 5 and c.leer_hora(hora.value).hour == 8
+
+
+def test_todas_las_fechas_de_las_pantallas_tienen_calendario(ui):
+    app, _ = ui
+    def recorrer(control, hallados):
+        if isinstance(control, ft.TextField) and control.hint_text and "DD/MM" in control.hint_text:
+            hallados.append(control)
+        for hijo in ([control.content] if getattr(control, "content", None) is not None and
+                     not isinstance(control.content, str) else []) + list(getattr(control, "controls", []) or []):
+            recorrer(hijo, hallados)
+    hallados = []
+    for seccion in app.pantallas:
+        recorrer(seccion.vista, hallados)
+    assert len(hallados) == 11 and all(f.suffix is not None for f in hallados)
+
+
+def test_las_tablas_tienen_barra_propia_con_alto_limitado():
+    cols = [("a", "A")]
+    tabla = c.crear_tabla(cols)
+    marco = c.contenedor_tabla(tabla, alto_max=300)
+    assert marco.content.scroll == ft.ScrollMode.ALWAYS
+    c.llenar_tabla(tabla, cols, [{"a": i} for i in range(40)])
+    assert marco.height == 300                                          # sólo se mueve la tabla
+    c.llenar_tabla(tabla, cols, [{"a": 1}, {"a": 2}])
+    assert marco.height < 300                                           # pocas filas: sin espacio vacío
+
+
+def test_comprobante_de_resultados_desde_la_interfaz(ui, tmp_path):
+    app, pag = ui
+    cargar_demo(app.servicios)
+    env, res = pestana(app, sl.PestanaEnvio), pestana(app, sl.PestanaResultados)
+    env.refrescar(); env.envio.value = "3"; env._recibir()               # remito C llega íntegro
+    assert pag.dialogos[-1] == "Remito aceptado"
+    res.refrescar(); res.muestra.value = "4"
+    res.resultado.value, res.obs.value = "Sin hallazgos de importancia", "Control en 6 meses"
+    res._registrar()
+    assert "Comprobante emitido" in pag.mensajes[-1]
+    pdfs = list((tmp_path / "exportaciones").glob("comprobante_resultado_M0004_*.pdf"))
+    assert pdfs and pdfs[0].stat().st_size > 800
+    assert len(res.tabla.rows) == 3                                       # 2 de la demo + la nueva
+    res._comprobante(1, "Comprobante emitido")                             # reimpresión desde la tabla
+    assert list((tmp_path / "exportaciones").glob("comprobante_resultado_M0001_*.pdf"))
+    res.muestra.value = "3"; res.resultado.value = "x"; res._registrar()   # rechazada: sin comprobante
+    assert "RECHAZADA" in pag.mensajes[-1]
+
+
+def _hijos(control):
+    contenido = getattr(control, "content", None)
+    return ([contenido] if contenido is not None and not isinstance(contenido, str) else []) + \
+        list(getattr(control, "controls", []) or [])
+
+
+def _listados_expandidos(control):
+    """Marcos de tabla que ocupan el alto restante y tienen su propia barra."""
+    hallados = []
+    if (isinstance(control, ft.Container) and control.expand is True
+            and isinstance(control.content, ft.Column) and control.content.scroll == ft.ScrollMode.ALWAYS):
+        hallados.append(control)
+    for hijo in _hijos(control):
+        hallados += _listados_expandidos(hijo)
+    return hallados
+
+
+def test_formularios_fijos_y_solo_se_mueve_el_listado(ui):
+    app, _ = ui
+    fijas = [sp.PestanaClientes, sp.PestanaMascotas, st.PestanaAgenda, sa.PestanaAtenciones,
+             sa.PestanaVacunas, sl.PestanaEmpaquetado, sl.PestanaEnvio, sl.PestanaResultados,
+             sl.PestanaSeguimiento]
+    vistas = [(clase.__name__, pestana(app, clase).vista) for clase in fijas]
+    vistas.append(("Reportes", app.pantallas[4].vista))
+    for nombre, vista in vistas:
+        assert vista.scroll is None, nombre                       # la pantalla no se desplaza
+        assert vista.horizontal_alignment == ft.CrossAxisAlignment.STRETCH, nombre   # cuadros a todo el ancho
+        assert _listados_expandidos(vista), nombre                # el listado ocupa el resto y tiene barra
+    assert len(_listados_expandidos(pestana(app, sa.PestanaVacunas).vista)) == 2     # dos listados
+    # la pestaña de veterinarios no entra completa en pantalla: se desplaza entera
+    assert pestana(app, st.PestanaProfesionales).vista.scroll == ft.ScrollMode.AUTO
+
+
+def test_listado_expandido_no_fija_su_alto():
+    cols = [("a", "A")]
+    tabla = c.crear_tabla(cols)
+    marco = c.contenedor_tabla(tabla, expandir=True)
+    c.llenar_tabla(tabla, cols, [{"a": i} for i in range(3)])
+    assert marco.expand is True and marco.height is None

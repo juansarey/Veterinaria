@@ -1063,16 +1063,21 @@ python src/veterinaria/main.py --demo
 |---|---|---|
 | **Clientes y mascotas** | Clientes · Mascotas | 1 y 2: altas, edición, bajas con confirmación, búsqueda e historia clínica de cada mascota (atenciones y vacunas). |
 | **Turnos** | Agenda de turnos · Veterinarios y agendas | Reserva con control de agenda y superposición; clínicas, veterinarios y agenda semanal. |
-| **Atención** | Atenciones · Vacunas | 3 y 7: registro de la atención con control de vacunas, derivación al laboratorio en un paso y comprobante en PDF. |
-| **Laboratorio** | Empaquetado · Envío y recepción · Resultados · Seguimiento | 4, 5, 6 y 7: remito y precinto, despacho, recepción con verificación del precinto, resultados y línea de tiempo de cada muestra. |
+| **Atención** | Atenciones · Vacunas | 3 y 7: registro de la atención con control de vacunas, derivación al laboratorio en un paso y comprobante de atención en PDF. |
+| **Laboratorio** | Empaquetado · Envío y recepción · Resultados · Seguimiento | 4, 5, 6 y 7: remito y precinto, despacho, recepción con verificación del precinto, resultados con su comprobante en PDF y línea de tiempo de cada muestra. |
 | **Reportes** | — | Los cuatro reportes con vista previa y exportación a PDF o CSV. |
 
 Para que sea fácil de usar, varios pasos del circuito se resuelven con una sola acción:
 registrar una mascota abre su historia clínica; *Derivar a laboratorio* emite la orden y la
 muestra; *Empaquetar y precintar* genera el remito, empaqueta las muestras y coloca el precinto
 (con un código automático si no se ingresa uno); *Registrar recepción* anota la llegada y
-verifica el precinto. Las fechas se escriben sólo con números (las barras se agregan solas), los
-selectores admiten búsqueda por escritura y los estados se muestran con etiquetas de color.
+verifica el precinto. Las fechas se escriben sólo con números (las barras se agregan solas) o se eligen en un
+calendario desplegable (con selector de hora cuando el campo incluye la hora), los selectores
+admiten búsqueda por escritura, los estados se muestran con etiquetas de color y los cuadros
+de formulario ocupan todo el ancho y quedan fijos, y el listado ocupa el resto de la pantalla con su propia
+barra de desplazamiento: al crecer, sólo se mueve la tabla y no toda la pantalla (la pestaña
+«Veterinarios y agendas», que reúne tres listados, se desplaza completa). El diseño está pensado para
+ventanas grandes (pantalla completa).
 
 ### Recorrido sugerido para la demostración
 
@@ -1084,7 +1089,9 @@ selectores admiten búsqueda por escritura y los estados se muestran con etiquet
 5. **Envío y recepción** → despachar; recibir con el precinto íntegro (muestras *Recibida*) o
    destildado (muestras *Rechazada*).
 6. **Resultados** → cargar el resultado de una muestra recibida; una rechazada no puede analizarse.
-7. **Seguimiento** → línea de tiempo inmutable de cada muestra. **Atención** → comprobante en PDF. **Reportes**.
+7. Al registrar el resultado se emite el **comprobante de resultados** en PDF (se puede volver a emitir desde la
+   tabla de resultados). **Seguimiento** → línea de tiempo inmutable de cada muestra. **Atención** →
+   comprobante de atención en PDF. **Reportes**.
 
 ### Capa de servicios
 
@@ -1105,6 +1112,11 @@ Los cuatro reportes se generan con `GeneradorReportes` y las estrategias existen
 compone los datos (por ejemplo, agrega mascota y clínica al reporte de atenciones). El CSV usa `;`
 como separador y UTF-8 con BOM para abrirse bien en Excel.
 
+El comprobante de resultados es un PDF que se genera a pedido con los datos ya persistidos
+(muestra, estudio, mascota, responsable, clínica, remito y precinto, fechas y resultado): no agrega
+entidades ni tablas. Registrar una mascota repetida (mismo responsable, nombre y especie) se
+rechaza, y una mascota sin atenciones puede eliminarse junto con su historia vacía.
+
 No se modificaron el dominio, los DAO, las estrategias, el DER ni el UML. La facturación y el
 resto de los procesos opcionales siguen fuera del alcance.
 
@@ -1116,7 +1128,7 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest -p no:cacheprovider
 ```
 
-La suite completa contiene actualmente 766 casos y finaliza sin fallos.
+La suite completa contiene actualmente 775 casos y finaliza sin fallos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro
@@ -1172,9 +1184,9 @@ El cierre incorpora siete pruebas de rechazo de `id=None` en los DAO antiguos:
 comprueban `ValueError`, ausencia de SQL e inserciones y conservación del trabajo
 pendiente hasta el rollback explícito del llamador.
 
-Los 19 casos nuevos cubren la capa de servicios (`tests/servicios/`) —circuito completo con
+Los 28 casos nuevos cubren la capa de servicios (`tests/servicios/`) —circuito completo con
 precinto intacto y roto, acciones en un paso, turnos, vacunas obligatorias, datos de demostración,
-exportación PDF/CSV y los cuatro reportes— y un recorrido de la interfaz con una página simulada
+exportación PDF/CSV, comprobante de resultados y los cuatro reportes— y un recorrido de la interfaz con una página simulada
 (`tests/interfaz/`), sin abrir ventanas. Estas pruebas no reemplazan una revisión visual de la
 aplicación.
 
