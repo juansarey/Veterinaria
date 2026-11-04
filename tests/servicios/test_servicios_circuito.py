@@ -244,3 +244,29 @@ def test_comprobante_de_resultados(s, base, tmp_path):
     exportar_comprobante_resultado_pdf(tmp_path / "res.pdf", comp)
     assert (tmp_path / "res.pdf").stat().st_size > 800
     assert [f["id_txt"] for f in s.laboratorio.listar_resultados()] == [f"M-{id_mu:04d}"]
+
+
+# ---------------------------------------------------------- vacunas y gráficos de reportes
+def test_no_se_aplica_una_vacuna_de_otra_especie(s, base):
+    id_felina = s.atencion.crear_vacuna("Triple felina", "Gato", True)
+    with pytest.raises(ErrorNegocio, match="Gato"):
+        s.atencion.registrar_aplicacion(base["mas"], id_felina, date(2026, 6, 1))
+    assert s.atencion.listar_aplicaciones(base["mas"]) == []
+
+
+def test_reportes_traen_datos_para_el_grafico(s, base):
+    _, _, id_mu = _atencion_con_orden(s, base)
+    s.atencion.crear_vacuna("Antirrábica", "Perro", True)   # después de la atención: si no, la bloquea
+    _, id_e = _despachado(s, base, id_mu, romper=True)
+    s.laboratorio.registrar_recepcion(id_e, LUNES + timedelta(hours=3))
+    reportes = s.reportes.todos(date(2026, 11, 2))
+    assert reportes["rechazadas"]["grafico"]["datos"] == {"Clínica Centro": 1}
+    assert reportes["vacunas"]["grafico"]["datos"] == {"Antirrábica (Perro)": 1}
+    assert reportes["tiempos"]["grafico"]["datos"]["Tránsito"] == 1.5
+
+
+def test_pdf_de_reporte_incluye_el_grafico(s, base, tmp_path):
+    s.atencion.registrar_atencion(base["mas"], base["vet"], LUNES, TipoAtencion.CONSULTA, "Control")
+    ruta = tmp_path / "atenciones.pdf"
+    exportar_pdf(ruta, s.reportes.atenciones_derivaciones())
+    assert b"/Subtype /Image" in ruta.read_bytes()

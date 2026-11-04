@@ -1,12 +1,18 @@
-"""Exportación de reportes y comprobantes a CSV y PDF (ReportLab)."""
+"""Exportación de reportes y comprobantes a CSV y PDF (ReportLab + Matplotlib)."""
 
 import csv
+from io import BytesIO
+
+import matplotlib
+matplotlib.use("Agg")                      # sólo genera imágenes, sin abrir ventanas
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
 def exportar_csv(ruta, reporte: dict) -> str:
@@ -17,6 +23,32 @@ def exportar_csv(ruta, reporte: dict) -> str:
         for fila in reporte["filas"]:
             escritor.writerow(["" if fila.get(c) is None else fila.get(c) for c in claves])
     return str(ruta)
+
+
+def imagen_grafico(grafico: dict | None):
+    """Gráfico de barras del reporte, como imagen en memoria (igual que el apunte de Reportes)."""
+    if not grafico or not grafico["datos"] or not any(grafico["datos"].values()):
+        return None
+    etiquetas, valores = list(grafico["datos"]), list(grafico["datos"].values())
+    figura, ax = plt.subplots(figsize=(9, 3.6))
+    try:
+        barras = ax.bar(etiquetas, valores, color="#2E7D6B")
+        ax.bar_label(barras, padding=2, fontsize=9)
+        ax.set_title(grafico["titulo"], fontsize=11)
+        ax.set_ylabel(grafico["eje"])
+        if all(isinstance(v, int) for v in valores):       # cantidades: eje sin decimales
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.tick_params(axis="x", labelsize=8)
+        if len(etiquetas) > 4:
+            plt.setp(ax.get_xticklabels(), rotation=20, ha="right")
+        figura.tight_layout()
+        buffer = BytesIO()
+        figura.savefig(buffer, format="png", dpi=130)
+        buffer.seek(0)
+        return Image(buffer, width=22 * cm, height=8.8 * cm)
+    finally:
+        plt.close(figura)
 
 
 def exportar_pdf(ruta, reporte: dict) -> str:
@@ -41,11 +73,15 @@ def exportar_pdf(ruta, reporte: dict) -> str:
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EEF5F2")]),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
-    doc.build([
+    elementos = [
         Paragraph(reporte["titulo"], estilos["Title"]),
         Paragraph(f"Total de registros: {len(reporte['filas'])}", estilos["Normal"]),
-        Spacer(1, 12), tabla,
-    ])
+        Spacer(1, 12),
+    ]
+    imagen = imagen_grafico(reporte.get("grafico"))
+    if imagen is not None:
+        elementos += [imagen, Spacer(1, 12)]
+    doc.build(elementos + [tabla])
     return str(ruta)
 
 

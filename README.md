@@ -102,7 +102,7 @@ usar Python 3.12 y ejecutar desde la raíz del repositorio:
    python -m pip install -r requirements.txt
    ```
 
-   `requirements.txt` contiene `pytest`, `flet[all]` (interfaz) y `reportlab` (PDF) sin
+   `requirements.txt` contiene `pytest`, `flet[all]` (interfaz), `reportlab` (PDF) y `matplotlib` (gráficos) sin
    fijar versiones; la interfaz se verificó con Flet 1.0.5 y ReportLab 4.4. El dominio y
    la persistencia usan la biblioteca estándar de Python, incluido `sqlite3`; no
    necesitan instalar un servidor de base de datos.

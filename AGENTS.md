@@ -530,7 +530,7 @@ Flet (escritorio) — guía de la cátedra
 Reportes exportables:
 
 ```text
-ReportLab (PDF) y csv de la biblioteca estándar
+ReportLab (PDF), Matplotlib (gráficos de los PDF) y csv de la biblioteca estándar
 ```
 
 Modelado DER:

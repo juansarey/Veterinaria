@@ -26,7 +26,8 @@ class SeccionReportes(Pantalla):
         self.fecha_ref = c.campo_fecha("Fecha de referencia (vacunas)", 220, date.today())
         self.titulo_rep = ft.Text("", size=18, weight=ft.FontWeight.W_600)
         self.resumen = ft.Text("", size=12, color=ft.Colors.GREY_700)
-        self.tabla = ft.DataTable(columns=[ft.DataColumn(ft.Text("—"))], rows=[],
+        # la tabla queda oculta hasta generar el primer reporte (evita un recuadro vacío)
+        self.tabla = ft.DataTable(columns=[ft.DataColumn(ft.Text("—"))], rows=[], visible=False,
                                   heading_row_color=ft.Colors.BLUE_GREY_50, column_spacing=18)
         self.actual = None
         return c.pagina(
@@ -58,6 +59,7 @@ class SeccionReportes(Pantalla):
             self.tabla.columns = [ft.DataColumn(ft.Text(t, weight=ft.FontWeight.W_600, size=12))
                                   for _, t in datos["columnas"]]
             c.llenar_tabla(self.tabla, datos["columnas"], datos["filas"])
+            self.tabla.visible = True
             self.app.actualizar()
 
     def _exportar(self, formato):
