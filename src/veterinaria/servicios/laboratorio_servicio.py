@@ -9,7 +9,7 @@ from veterinaria.dominio.laboratorio.orden_derivacion_laboratorio import (
 )
 from veterinaria.dominio.laboratorio.resultado_analisis import ResultadoAnalisis
 from veterinaria.dominio.transporte.conservadora_isotermica import ConservadoraIsotermica
-from veterinaria.dominio.transporte.envio import Envio
+from veterinaria.dominio.transporte.envio import Envio, EstadoEnvio
 from veterinaria.dominio.transporte.precinto_sanitario import PrecintoSanitario
 from veterinaria.dominio.transporte.recepcion import Recepcion
 from veterinaria.dominio.transporte.remito_biologico import EstadoRemito, RemitoBiologico
@@ -170,6 +170,16 @@ class LaboratorioServicio(ServicioBase):
             c = dao.obtener_por_id(id_conservadora)
             if c is None:
                 raise ErrorNegocio("La conservadora no existe.")
+            envio_dao, recepcion_dao = EnvioDAO(con), RecepcionDAO(con)
+            for remito in RemitoBiologicoDAO(con).listar():
+                if remito.conservadora.id_conservadora != id_conservadora:
+                    continue
+                if remito.estado != EstadoRemito.RECIBIDO:
+                    raise ErrorNegocio("La conservadora tiene un remito pendiente de recepción.")
+                envio = envio_dao.obtener_por_remito(remito.id_remito)
+                if (envio is None or envio.estado != EstadoEnvio.ENTREGADO
+                        or recepcion_dao.obtener_por_envio(envio.id_envio) is None):
+                    raise ErrorNegocio("La conservadora tiene un remito sin recepción registrada.")
             if not c.liberar():
                 raise ErrorNegocio("La conservadora ya está disponible.")
             dao.actualizar(c)
@@ -201,18 +211,16 @@ class LaboratorioServicio(ServicioBase):
         with self._tx() as con:
             self._agregar_muestras(con, id_remito, ids_muestra, fecha_hora, observaciones)
 
-    def _agregar_muestras(self, con, id_remito, ids_muestra, fecha_hora, observaciones):
-        if not ids_muestra:
-            raise ErrorNegocio("Seleccione al menos una muestra.")
+    def _agregar_muestras(self, con, id_remito, ids_muestra, fecha_hora, observaciones,
+                         muestras_validadas=None):
         remito_dao = RemitoBiologicoDAO(con)
         remito = remito_dao.obtener_por_id(id_remito)
         if remito is None:
             raise ErrorNegocio("El remito no existe.")
-        muestra_dao = MuestraBiologicaDAO(con)
-        for id_muestra in ids_muestra:
-            muestra = muestra_dao.obtener_por_id(id_muestra)
-            if muestra is None:
-                raise ErrorNegocio(f"La muestra #{id_muestra} no existe.")
+        muestras = muestras_validadas if muestras_validadas is not None else \
+            self._validar_clinica_muestras(con, remito.clinica_origen.id_clinica, ids_muestra)
+        for muestra in muestras:
+            id_muestra = muestra.id_muestra
             if remito.estado != EstadoRemito.GENERADO:
                 raise ErrorNegocio("El remito ya fue despachado: no admite más muestras.")
             if not remito.agregar_muestra(muestra, fecha_hora or ahora(),
@@ -228,6 +236,24 @@ class LaboratorioServicio(ServicioBase):
                     f"(estado {estado}; debe estar EXTRAIDA)."
                 )
             remito_dao.guardar_muestra_asociada(remito, muestra)
+
+    @staticmethod
+    def _validar_clinica_muestras(con, id_clinica, ids_muestra):
+        """Valida el lote completo antes de empaquetar o persistir sus muestras."""
+        if not ids_muestra:
+            raise ErrorNegocio("Seleccione al menos una muestra.")
+        dao = MuestraBiologicaDAO(con)
+        muestras = []
+        for id_muestra in ids_muestra:
+            muestra = dao.obtener_por_id(id_muestra)
+            if muestra is None:
+                raise ErrorNegocio(f"La muestra #{id_muestra} no existe.")
+            if dao.obtener_id_clinica_origen(id_muestra) != id_clinica:
+                raise ErrorNegocio(
+                    f"La muestra #{id_muestra} pertenece a otra clínica de origen."
+                )
+            muestras.append(muestra)
+        return muestras
 
     def asignar_precinto(self, id_remito, codigo) -> int:
         with self._tx() as con:
@@ -251,8 +277,9 @@ class LaboratorioServicio(ServicioBase):
             raise ErrorNegocio("Seleccione al menos una muestra.")
         fecha = fecha or ahora()
         with self._tx() as con:
+            muestras = self._validar_clinica_muestras(con, id_clinica, ids_muestra)
             id_remito = self._crear_remito(con, id_clinica, id_conservadora, observaciones, fecha)
-            self._agregar_muestras(con, id_remito, ids_muestra, fecha, "")
+            self._agregar_muestras(con, id_remito, ids_muestra, fecha, "", muestras)
             codigo = (codigo_precinto or "").strip() or \
                 f"PRE-{self._siguiente_id(con, 'precinto_sanitario'):05d}"
             self._asignar_precinto(con, id_remito, codigo)

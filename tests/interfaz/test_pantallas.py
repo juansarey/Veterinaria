@@ -195,6 +195,59 @@ def test_reportes_con_datos_demo(ui, tmp_path):
         app.ir_a(i)
 
 
+def test_reporte_fallido_descarta_vista_previa_y_no_exporta_datos_previos(ui, tmp_path, monkeypatch):
+    app, pag = ui
+    cargar_demo(app.servicios)
+    rp = app.pantallas[4]
+    rp.reporte.value = "vacunas"
+    rp.fecha_ref.value = "04/11/2026"
+    rp._generar()
+    assert rp.actual is not None and rp.tabla.visible
+
+    rp.fecha_ref.value = "fecha inválida"
+    with monkeypatch.context() as parche:
+        parche.setattr(sr, "exportar_csv", lambda *_: pytest.fail("Se exportaron datos anteriores"))
+        rp._exportar("csv")
+    assert rp.actual is None
+    assert not rp.tabla.visible and rp.tabla.rows == []
+    assert rp.titulo_rep.value == rp.resumen.value == ""
+    assert not list((tmp_path / "exportaciones").glob("*.csv"))
+    assert "Reporte exportado" not in pag.mensajes[-1]
+
+    rp.fecha_ref.value = "04/11/2026"
+    rp._exportar("csv")
+    assert rp.actual is not None and rp.tabla.visible
+    assert "Reporte exportado" in pag.mensajes[-1]
+    assert list((tmp_path / "exportaciones").glob("reporte_vacunas_*.csv"))
+
+
+@pytest.mark.parametrize("formato, nombre", [("pdf", "exportar_pdf"), ("csv", "exportar_csv")])
+def test_error_de_escritura_no_anuncia_exito_y_permite_reintento(
+        ui, tmp_path, monkeypatch, formato, nombre):
+    app, pag = ui
+    rp = app.pantallas[4]
+    archivos_abiertos = []
+    monkeypatch.setattr(app, "abrir_archivo", archivos_abiertos.append)
+
+    def sin_permisos(*_):
+        raise PermissionError("sin permisos")
+
+    inicio_avisos = len(pag.mensajes)
+    with monkeypatch.context() as parche:
+        parche.setattr(sr, nombre, sin_permisos)
+        rp._exportar(formato)
+    avisos_fallo = pag.mensajes[inicio_avisos:]
+    assert any("sin permisos" in aviso for aviso in avisos_fallo)
+    assert not any("Reporte exportado" in aviso for aviso in avisos_fallo)
+    assert archivos_abiertos == []
+    assert rp.actual is not None and rp.tabla.visible
+
+    rp._exportar(formato)
+    assert "Reporte exportado" in pag.mensajes[-1]
+    assert len(archivos_abiertos) == 1
+    assert list((tmp_path / "exportaciones").glob(f"reporte_atenciones_*.{formato}"))
+
+
 def test_parsers_y_mascara():
     assert c.leer_fecha("25/11/2026").day == 25
     assert c.leer_fecha_hora("25/11/2026 09:30").hour == 9
@@ -273,6 +326,40 @@ def test_comprobante_de_resultados_desde_la_interfaz(ui, tmp_path):
     assert list((tmp_path / "exportaciones").glob("comprobante_resultado_M0001_*.pdf"))
     res.muestra.value = "3"; res.resultado.value = "x"; res._registrar()   # rechazada: sin comprobante
     assert "RECHAZADA" in pag.mensajes[-1]
+
+
+def test_resultado_permanece_guardado_si_falla_pdf_y_se_reemite(ui, tmp_path, monkeypatch):
+    app, pag = ui
+    cargar_demo(app.servicios)
+    env, res = pestana(app, sl.PestanaEnvio), pestana(app, sl.PestanaResultados)
+    env.refrescar(); env.envio.value = "3"; env._recibir()
+    res.refrescar(); res.muestra.value = "4"
+    res.resultado.value, res.obs.value = "Sin hallazgos", "Revisar en 6 meses"
+
+    def fallo_pdf(*_):
+        raise PermissionError("sin permisos para PDF")
+
+    inicio_avisos = len(pag.mensajes)
+    with monkeypatch.context() as parche:
+        parche.setattr(sl, "exportar_comprobante_resultado_pdf", fallo_pdf)
+        res._registrar()
+
+    avisos = pag.mensajes[inicio_avisos:]
+    assert any("Resultado registrado" in aviso for aviso in avisos)
+    assert any("permanece guardado" in aviso and "reemitirlo" in aviso for aviso in avisos)
+    assert not any("Comprobante emitido" in aviso for aviso in avisos)
+    assert not list((tmp_path / "exportaciones").glob("comprobante_resultado_M0004_*.pdf"))
+    assert len(res.tabla.rows) == 3  # el resultado aparece con opción de reemisión
+    assert all(opcion.key != "4" for opcion in res.muestra.options)
+
+    servicios_reabiertos = Servicios(tmp_path / "v.db")
+    assert servicios_reabiertos.laboratorio.obtener_resultado(4)["resultado"] == "Sin hallazgos"
+    assert next(m for m in servicios_reabiertos.laboratorio.listar_muestras()
+                if m["id"] == 4)["estado"] == "ANALIZADA"
+
+    res._comprobante(4, "Comprobante emitido")
+    assert "Comprobante emitido" in pag.mensajes[-1]
+    assert list((tmp_path / "exportaciones").glob("comprobante_resultado_M0004_*.pdf"))
 
 
 def _hijos(control):

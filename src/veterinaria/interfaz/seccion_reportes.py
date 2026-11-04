@@ -5,7 +5,7 @@ from datetime import date
 import flet as ft
 
 from veterinaria.interfaz import componentes as c
-from veterinaria.interfaz.exportaciones import carpeta_exportacion, nombre_archivo
+from veterinaria.interfaz.exportaciones import exportar_con_nombre_unico
 from veterinaria.interfaz.pantalla import Pantalla
 from veterinaria.servicios.exportador import exportar_csv, exportar_pdf
 
@@ -43,6 +43,12 @@ class SeccionReportes(Pantalla):
         pass
 
     def _generar(self, e=None):
+        self.actual = None
+        self.titulo_rep.value = self.resumen.value = ""
+        self.tabla.columns = [ft.DataColumn(ft.Text("—"))]
+        self.tabla.rows = []
+        self.tabla.visible = False
+
         def accion():
             rep = self.srv.reportes
             clave = self.reporte.value
@@ -61,12 +67,21 @@ class SeccionReportes(Pantalla):
             c.llenar_tabla(self.tabla, datos["columnas"], datos["filas"])
             self.tabla.visible = True
             self.app.actualizar()
+            return self.actual
 
     def _exportar(self, formato):
-        self._generar()                    # siempre con los datos y parámetros actuales
-        if self.actual is None or self.actual.get("clave") != self.reporte.value:
+        datos = self._generar()             # siempre con los datos y parámetros actuales
+        if datos is None:
             return
-        ruta = carpeta_exportacion(self.app.ruta_bd) / nombre_archivo(f"reporte_{self.reporte.value}", formato)
-        (exportar_pdf if formato == "pdf" else exportar_csv)(ruta, self.actual)
-        self.app.ok(f"Reporte exportado: {ruta}")
-        self.app.abrir_archivo(ruta)
+
+        def accion():
+            exportador = exportar_pdf if formato == "pdf" else exportar_csv
+            return exportar_con_nombre_unico(
+                self.app.ruta_bd, f"reporte_{self.reporte.value}", formato,
+                lambda ruta: exportador(ruta, datos))
+
+        ruta = self.ejecutar(accion)
+        if ruta is not None:
+            self.app.ok(f"Reporte exportado: {ruta}")
+            self.app.abrir_archivo(ruta)
+            self.app.actualizar()

@@ -6,7 +6,7 @@ import flet as ft
 
 from veterinaria.dominio.clinica.atencion import TipoAtencion
 from veterinaria.interfaz import componentes as c
-from veterinaria.interfaz.exportaciones import carpeta_exportacion, nombre_archivo
+from veterinaria.interfaz.exportaciones import exportar_con_nombre_unico
 from veterinaria.interfaz.pantalla import Pantalla, Seccion
 from veterinaria.servicios.exportador import exportar_comprobante_pdf
 
@@ -116,9 +116,9 @@ class PestanaAtenciones(Pantalla):
             if self.srv.atencion.obtener_comprobante(id_at) is None:
                 self.srv.atencion.emitir_comprobante(id_at)
             comp = self.srv.atencion.obtener_comprobante(id_at)
-            ruta = carpeta_exportacion(self.app.ruta_bd) / nombre_archivo(f"comprobante_{id_at}", "pdf")
-            exportar_comprobante_pdf(ruta, comp)
-            return ruta
+            return exportar_con_nombre_unico(
+                self.app.ruta_bd, f"comprobante_{id_at}", "pdf",
+                lambda ruta: exportar_comprobante_pdf(ruta, comp))
         ruta = self.ejecutar(accion)
         if ruta:
             self.app.ok(f"Comprobante emitido: {ruta}")

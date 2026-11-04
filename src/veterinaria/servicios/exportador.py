@@ -1,7 +1,9 @@
 """Exportación de reportes y comprobantes a CSV y PDF (ReportLab + Matplotlib)."""
 
 import csv
+from html import escape
 from io import BytesIO
+from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")                      # sólo genera imágenes, sin abrir ventanas
@@ -15,14 +17,35 @@ from reportlab.lib.units import cm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
+def _texto_pdf(valor) -> str:
+    """Escapa texto literal; sólo los saltos reales se convierten en marcado propio."""
+    texto = escape(str(valor), quote=False)
+    return texto.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br/>")
+
+
 def exportar_csv(ruta, reporte: dict) -> str:
     claves = [c for c, _ in reporte["columnas"]]
-    with open(ruta, "w", newline="", encoding="utf-8-sig") as archivo:
-        escritor = csv.writer(archivo, delimiter=";")
-        escritor.writerow([titulo for _, titulo in reporte["columnas"]])
-        for fila in reporte["filas"]:
-            escritor.writerow(["" if fila.get(c) is None else fila.get(c) for c in claves])
+    archivo = open(ruta, "x", newline="", encoding="utf-8-sig")
+    try:
+        with archivo:
+            escritor = csv.writer(archivo, delimiter=";")
+            escritor.writerow([titulo for _, titulo in reporte["columnas"]])
+            for fila in reporte["filas"]:
+                escritor.writerow(["" if fila.get(c) is None else fila.get(c) for c in claves])
+    except BaseException:
+        Path(ruta).unlink(missing_ok=True)
+        raise
     return str(ruta)
+
+
+def _guardar_pdf(ruta, elementos, **opciones) -> None:
+    archivo = open(ruta, "xb")
+    try:
+        with archivo:
+            SimpleDocTemplate(archivo, **opciones).build(elementos)
+    except BaseException:
+        Path(ruta).unlink(missing_ok=True)
+        raise
 
 
 def imagen_grafico(grafico: dict | None):
@@ -56,15 +79,13 @@ def exportar_pdf(ruta, reporte: dict) -> str:
     celda = estilos["BodyText"]
     celda.fontSize = 8
     claves = [c for c, _ in reporte["columnas"]]
-    datos = [[Paragraph(f"<b>{t}</b>", celda) for _, t in reporte["columnas"]]]
+    datos = [[Paragraph(f"<b>{_texto_pdf(t)}</b>", celda) for _, t in reporte["columnas"]]]
     for fila in reporte["filas"]:
-        datos.append([Paragraph(str(fila.get(c, "") if fila.get(c) is not None else ""), celda)
+        datos.append([Paragraph(_texto_pdf(fila.get(c, "") if fila.get(c) is not None else ""), celda)
                       for c in claves])
     if len(datos) == 1:
         datos.append([Paragraph("Sin datos para mostrar", celda)] + [""] * (len(claves) - 1))
 
-    doc = SimpleDocTemplate(str(ruta), pagesize=landscape(A4), leftMargin=1.5 * cm,
-                            rightMargin=1.5 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
     tabla = Table(datos, repeatRows=1)
     tabla.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2E7D6B")),
@@ -74,31 +95,32 @@ def exportar_pdf(ruta, reporte: dict) -> str:
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
     elementos = [
-        Paragraph(reporte["titulo"], estilos["Title"]),
+        Paragraph(_texto_pdf(reporte["titulo"]), estilos["Title"]),
         Paragraph(f"Total de registros: {len(reporte['filas'])}", estilos["Normal"]),
         Spacer(1, 12),
     ]
     imagen = imagen_grafico(reporte.get("grafico"))
     if imagen is not None:
         elementos += [imagen, Spacer(1, 12)]
-    doc.build(elementos + [tabla])
+    _guardar_pdf(ruta, elementos + [tabla], pagesize=landscape(A4), leftMargin=1.5 * cm,
+                 rightMargin=1.5 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
     return str(ruta)
 
 
 def _ficha_pdf(ruta, titulo, filas, bloques=()):
     """PDF de una página: título, tabla de datos (etiqueta/valor) y bloques de texto."""
     estilos = getSampleStyleSheet()
-    datos = [[Paragraph(f"<b>{k}</b>", estilos["BodyText"]),
-              Paragraph(str(v), estilos["BodyText"])] for k, v in filas]
+    datos = [[Paragraph(f"<b>{_texto_pdf(k)}</b>", estilos["BodyText"]),
+              Paragraph(_texto_pdf(v), estilos["BodyText"])] for k, v in filas]
     tabla = Table(datos, colWidths=[4.8 * cm, 12 * cm])
     tabla.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
                                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EEF5F2")),
                                ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    elementos = [Paragraph(titulo, estilos["Title"]), Spacer(1, 12), tabla]
+    elementos = [Paragraph(_texto_pdf(titulo), estilos["Title"]), Spacer(1, 12), tabla]
     for encabezado, texto in bloques:
-        elementos += [Spacer(1, 14), Paragraph(f"<b>{encabezado}</b>", estilos["Heading3"]),
-                      Paragraph((texto or "—").replace("\n", "<br/>"), estilos["BodyText"])]
-    SimpleDocTemplate(str(ruta), pagesize=A4).build(elementos)
+        elementos += [Spacer(1, 14), Paragraph(f"<b>{_texto_pdf(encabezado)}</b>", estilos["Heading3"]),
+                      Paragraph(_texto_pdf(texto or "—"), estilos["BodyText"])]
+    _guardar_pdf(ruta, elementos, pagesize=A4)
     return str(ruta)
 
 

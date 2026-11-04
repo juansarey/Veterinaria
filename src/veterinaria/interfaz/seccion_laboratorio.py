@@ -3,7 +3,7 @@
 import flet as ft
 
 from veterinaria.interfaz import componentes as c
-from veterinaria.interfaz.exportaciones import carpeta_exportacion, nombre_archivo
+from veterinaria.interfaz.exportaciones import exportar_con_nombre_unico
 from veterinaria.interfaz.pantalla import Pantalla, Seccion
 from veterinaria.servicios.exportador import exportar_comprobante_resultado_pdf
 
@@ -201,21 +201,26 @@ class PestanaResultados(Pantalla):
                 c.leer_fecha_hora(self.fecha.value, "Fecha del resultado"))
         if self.ejecutar(accion):
             self.resultado.value = self.obs.value = ""
-            self._comprobante(id_muestra, "Resultado registrado (muestra «Analizada»). Comprobante emitido")
+            self.app.ok("Resultado registrado (muestra «Analizada»).")
+            self._comprobante(id_muestra, "Comprobante emitido", resultado_recien_guardado=True)
 
-    def _comprobante(self, id_muestra, mensaje):
+    def _comprobante(self, id_muestra, mensaje, resultado_recien_guardado=False):
         """Genera el comprobante de resultados en PDF y lo abre."""
         def accion():
             datos = self.srv.laboratorio.obtener_comprobante_resultado(id_muestra)
-            ruta = carpeta_exportacion(self.app.ruta_bd) / nombre_archivo(
-                f"comprobante_resultado_M{id_muestra:04d}", "pdf")
-            exportar_comprobante_resultado_pdf(ruta, datos)
-            return ruta
+            return exportar_con_nombre_unico(
+                self.app.ruta_bd, f"comprobante_resultado_M{id_muestra:04d}", "pdf",
+                lambda ruta: exportar_comprobante_resultado_pdf(ruta, datos))
         ruta = self.ejecutar(accion)
         if ruta:
             self.app.ok(f"{mensaje}: {ruta}")
             self.app.abrir_archivo(ruta)
             self.app.actualizar()
+        elif resultado_recien_guardado:
+            self.app.error("El resultado permanece guardado. No se pudo generar el PDF; "
+                           "puede reemitirlo desde la tabla de resultados.")
+            self.app.actualizar()
+        return ruta
 
 
 class PestanaSeguimiento(Pantalla):

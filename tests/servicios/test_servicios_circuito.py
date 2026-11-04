@@ -191,6 +191,72 @@ def test_empaquetar_con_fecha_anterior_a_la_extraccion(s, base):
         s.laboratorio.empaquetar(base["cl"], id_c, [id_mu], "", LUNES - timedelta(hours=1))
 
 
+def test_no_empaqueta_muestra_de_otra_clinica_ni_altera_el_lote(s, base):
+    _, _, muestra_a = _atencion_con_orden(s, base)
+    clinica_b = s.clinica.crear_clinica("Clínica Norte", "Norte 100")
+    vet_b = s.clinica.crear_veterinario(clinica_b, "Eva", "López", "MP-2")
+    atencion_b = s.atencion.registrar_atencion(
+        base["mas"], vet_b, LUNES, TipoAtencion.CONSULTA, "Control")
+    muestra_b = s.laboratorio.derivar(
+        atencion_b, "Urianálisis", "Orina", LUNES)["id_muestra"]
+    conservadora = s.laboratorio.crear_conservadora("CONS-OTRA")
+
+    with pytest.raises(ErrorNegocio, match="otra clínica"):
+        s.laboratorio.empaquetar(
+            clinica_b, conservadora, [muestra_b, muestra_a], fecha=LUNES + timedelta(hours=1))
+    assert s.laboratorio.listar_remitos() == []
+    assert [c["estado"] for c in s.laboratorio.listar_conservadoras()
+            if c["id"] == conservadora] == ["DISPONIBLE"]
+    for id_muestra in (muestra_a, muestra_b):
+        muestra = next(m for m in s.laboratorio.listar_muestras() if m["id"] == id_muestra)
+        assert muestra["estado"] == "EXTRAIDA" and muestra["id_remito"] is None
+        assert [h["estado"] for h in s.laboratorio.historial_muestra(id_muestra)] == ["EXTRAIDA"]
+
+    remito = s.laboratorio.crear_remito(clinica_b, conservadora, fecha_emision=LUNES)
+    with pytest.raises(ErrorNegocio, match="otra clínica"):
+        s.laboratorio.agregar_muestras_a_remito(
+            remito, [muestra_b, muestra_a], LUNES + timedelta(hours=1))
+    assert next(r for r in s.laboratorio.listar_remitos() if r["id"] == remito)["muestras"] == 0
+    for id_muestra in (muestra_a, muestra_b):
+        muestra = next(m for m in s.laboratorio.listar_muestras() if m["id"] == id_muestra)
+        assert muestra["estado"] == "EXTRAIDA" and muestra["id_remito"] is None
+        assert [h["estado"] for h in s.laboratorio.historial_muestra(id_muestra)] == ["EXTRAIDA"]
+
+
+@pytest.mark.parametrize("precinto_integro", [True, False])
+def test_conservadora_solo_se_libera_tras_recepcion_completa(s, base, precinto_integro):
+    _, _, id_muestra = _atencion_con_orden(s, base)
+    conservadora = s.laboratorio.crear_conservadora("CONS-CUSTODIA")
+    remito = s.laboratorio.crear_remito(base["cl"], conservadora, fecha_emision=LUNES)
+    with pytest.raises(ErrorNegocio, match="pendiente de recepción"):
+        s.laboratorio.liberar_conservadora(conservadora)
+
+    s.laboratorio.agregar_muestras_a_remito(remito, [id_muestra], LUNES + timedelta(minutes=10))
+    s.laboratorio.asignar_precinto(remito, "PRE-CUSTODIA")
+    envio = s.laboratorio.despachar_remito(remito, LUNES + timedelta(minutes=30))
+    with pytest.raises(ErrorNegocio, match="pendiente de recepción"):
+        s.laboratorio.liberar_conservadora(conservadora)
+    s.laboratorio.registrar_llegada(envio, LUNES + timedelta(hours=2))
+    with pytest.raises(ErrorNegocio, match="pendiente de recepción"):
+        s.laboratorio.liberar_conservadora(conservadora)
+    assert next(c for c in s.laboratorio.listar_conservadoras()
+                if c["id"] == conservadora)["estado"] == "EN_USO"
+
+    resultado = s.laboratorio.recibir_remito(
+        envio, precinto_integro, LUNES + timedelta(hours=3))
+    estado = "RECIBIDA" if precinto_integro else "RECHAZADA"
+    assert resultado["muestras"] == [(id_muestra, estado)]
+    assert s.laboratorio.historial_muestra(id_muestra)[-1]["estado"] == estado
+    s.laboratorio.liberar_conservadora(conservadora)
+    assert next(c for c in s.laboratorio.listar_conservadoras()
+                if c["id"] == conservadora)["estado"] == "DISPONIBLE"
+
+    # Un remito anterior recibido no debe ocultar un nuevo uso todavía activo.
+    s.laboratorio.crear_remito(base["cl"], conservadora, fecha_emision=LUNES + timedelta(hours=4))
+    with pytest.raises(ErrorNegocio, match="pendiente de recepción"):
+        s.laboratorio.liberar_conservadora(conservadora)
+
+
 def test_datos_demo(tmp_path):
     from veterinaria.servicios.datos_demo import cargar_demo, hay_datos
     s = Servicios(tmp_path / "demo.db")

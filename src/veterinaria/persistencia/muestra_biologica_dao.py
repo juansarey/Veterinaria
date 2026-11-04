@@ -71,6 +71,20 @@ class MuestraBiologicaDAO:
             historial = self._obtener_historial(cursor, id_muestra)
         return self._desde_fila(fila, historial)
 
+    def obtener_id_clinica_origen(self, id_muestra: int) -> int | None:
+        """Consulta la clínica de la atención que originó la muestra."""
+        with closing(self._conexion.cursor()) as cursor:
+            cursor.execute("""
+                SELECT v.id_clinica
+                FROM muestra_biologica AS m
+                JOIN orden_derivacion_laboratorio AS o ON o.id_orden = m.id_orden
+                JOIN atencion AS a ON a.id_atencion = o.id_atencion
+                JOIN veterinario AS v ON v.id_veterinario = a.id_veterinario
+                WHERE m.id_muestra = ?
+            """, (id_muestra,))
+            fila = cursor.fetchone()
+        return fila["id_clinica"] if fila is not None else None
+
     def listar_por_orden(self, id_orden: int) -> list[MuestraBiologica]:
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""
