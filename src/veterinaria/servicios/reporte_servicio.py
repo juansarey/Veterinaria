@@ -2,8 +2,12 @@
 
 Cada método devuelve un diccionario genérico listo para mostrar o exportar::
 
-    {"titulo": str, "columnas": [(clave, encabezado), ...], "filas": [dict, ...]}
+    {"titulo": str, "columnas": [(clave, encabezado), ...], "filas": [dict, ...],
+     "grafico": {"titulo": str, "eje": str, "datos": {etiqueta: valor}}}
+
+El gráfico lo dibuja el exportador en el PDF (Matplotlib); la vista en pantalla lo ignora.
 """
+from collections import Counter
 
 from datetime import date, datetime, timedelta
 
@@ -37,6 +41,14 @@ def formatear_duracion(valor: timedelta | None) -> str:
     return " ".join(partes)
 
 
+def grafico(titulo: str, eje: str, datos: dict) -> dict:
+    return {"titulo": titulo, "eje": eje, "datos": dict(datos)}
+
+
+def _horas(valor: timedelta | None) -> float:
+    return round(valor.total_seconds() / 3600, 1) if valor else 0.0
+
+
 class ReporteServicio(ServicioBase):
     def _generar(self, estrategia) -> list:
         return GeneradorReportes(estrategia).generar_reporte()
@@ -65,6 +77,7 @@ class ReporteServicio(ServicioBase):
                          ("veterinario", "Veterinario"), ("clinica", "Clínica"),
                          ("derivaciones", "Derivaciones"), ("estudios", "Estudios solicitados")],
             "filas": salida,
+            "grafico": grafico("Atenciones por tipo", "Atenciones", Counter(f["tipo"] for f in salida)),
         }
 
     # 2 ------------------------------------------------------------ muestras rechazadas
@@ -78,6 +91,8 @@ class ReporteServicio(ServicioBase):
                          ("clinica_origen", "Clínica de origen"),
                          ("estado_precinto", "Precinto")],
             "filas": [{**f, "fecha_rechazo": fmt_fecha_hora(f["fecha_rechazo"])} for f in filas],
+            "grafico": grafico("Muestras rechazadas por clínica de origen", "Muestras",
+                               Counter(f["clinica_origen"] for f in filas)),
         }
 
     # 3 --------------------------------------------------------------- vacunas pendientes
@@ -91,6 +106,8 @@ class ReporteServicio(ServicioBase):
             "columnas": [("mascota", "Mascota"), ("especie", "Especie"),
                          ("responsable", "Responsable"), ("vacuna", "Vacuna pendiente")],
             "filas": filas,
+            "grafico": grafico("Mascotas con cada vacuna pendiente", "Mascotas",
+                               Counter(f"{f['vacuna']} ({f['especie']})" for f in filas)),
         }
 
     # 4 ------------------------------------------------ tiempos de tránsito y procesamiento
@@ -113,6 +130,9 @@ class ReporteServicio(ServicioBase):
                  "cantidad": r["cantidad_muestras_procesadas"],
                  "promedio": formatear_duracion(r["tiempo_promedio_procesamiento"])},
             ],
+            "grafico": grafico("Tiempo promedio de cada etapa", "Horas", {
+                "Tránsito": _horas(r["tiempo_promedio_transito"]),
+                "Procesamiento": _horas(r["tiempo_promedio_procesamiento"])}),
         }
 
     def todos(self, fecha_referencia: date | None = None) -> dict[str, dict]:

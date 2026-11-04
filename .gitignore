@@ -49,3 +49,5 @@ dist/
 # Archivos de backup
 *.bak
 *~
+# Reportes y comprobantes exportados desde la aplicación
+exportaciones/

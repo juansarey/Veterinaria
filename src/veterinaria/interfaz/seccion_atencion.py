@@ -158,13 +158,20 @@ class PestanaVacunas(Pantalla):
                                vertical_alignment=ft.CrossAxisAlignment.STRETCH))
 
     def refrescar(self):
-        vacunas = self.srv.atencion.listar_vacunas()
-        c.cargar_selector(self.vacuna, vacunas)
-        c.llenar_tabla(self.t_vac, self.COLS_V, vacunas)
-        c.cargar_selector(self.mascota, self.srv.clinica.listar_mascotas())
+        self.vacunas = self.srv.atencion.listar_vacunas()
+        c.llenar_tabla(self.t_vac, self.COLS_V, self.vacunas)
+        self.mascotas = self.srv.clinica.listar_mascotas()
+        c.cargar_selector(self.mascota, self.mascotas)
         self._aplicaciones()
 
+    def _cargar_vacunas_de_la_especie(self):
+        """Sólo se ofrecen las vacunas de la especie de la mascota elegida."""
+        idm = c.id_de(self.mascota)
+        especie = next((m["especie"] for m in self.mascotas if m["id"] == idm), None)
+        c.cargar_selector(self.vacuna, [v for v in self.vacunas if especie is None or v["especie"] == especie])
+
     def _aplicaciones(self):
+        self._cargar_vacunas_de_la_especie()
         idm = c.id_de(self.mascota)
         c.llenar_tabla(self.t_apl, self.COLS_A, self.srv.atencion.listar_aplicaciones(idm) if idm else [])
         pendientes = self.srv.atencion.vacunas_pendientes(idm) if idm else []

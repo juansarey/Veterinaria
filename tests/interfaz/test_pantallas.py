@@ -314,3 +314,23 @@ def test_listado_expandido_no_fija_su_alto():
     marco = c.contenedor_tabla(tabla, expandir=True)
     c.llenar_tabla(tabla, cols, [{"a": i} for i in range(3)])
     assert marco.expand is True and marco.height is None
+
+
+def test_vacunas_se_filtran_por_la_especie_de_la_mascota(ui):
+    app, _ = ui
+    p = pestana(app, sa.PestanaVacunas)
+    cargar_demo(p.srv)
+    p.refrescar()
+    for m in p.mascotas:
+        p.mascota.value = str(m["id"])
+        p._al_elegir()
+        especies = {v["especie"] for v in p.vacunas if str(v["id"]) in {o.key for o in p.vacuna.options}}
+        assert especies == {m["especie"]}
+
+
+def test_tabla_de_reportes_oculta_hasta_generar(ui):
+    app, _ = ui
+    p = next(x for x in app.pantallas if isinstance(x, sr.SeccionReportes))
+    assert p.tabla.visible is False
+    p._generar()
+    assert p.tabla.visible is True

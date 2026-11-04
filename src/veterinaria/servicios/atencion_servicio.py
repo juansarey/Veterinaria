@@ -47,6 +47,9 @@ class AtencionServicio(ServicioBase):
             vacuna = VacunaDAO(con).obtener_por_id(id_vacuna)
             if mascota is None or vacuna is None:
                 raise ErrorNegocio("La mascota o la vacuna no existen.")
+            if vacuna.especie != mascota.especie:
+                raise ErrorNegocio(f"La vacuna {vacuna.nombre} es para {vacuna.especie} "
+                                   f"y {mascota.nombre} es {mascota.especie}.")
             id_aplicacion = self._siguiente_id(con, "aplicacion_vacuna")
             aplicacion = AplicacionVacuna(id_aplicacion, vacuna, fecha_aplicacion,
                                           fecha_proxima_dosis)
