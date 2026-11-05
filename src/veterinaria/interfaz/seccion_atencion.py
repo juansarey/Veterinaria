@@ -96,6 +96,7 @@ def _tabla_atencion(pantalla, tabla, ancho_minimo, con_acciones=False):
 
 class PestanaAtenciones(Pantalla):
     nombre, icono = "Atenciones", ft.Icons.MEDICAL_SERVICES
+    CLAVE_DERIVAR = "formulario-derivar"
     COLS = [("fecha_txt", "Fecha"), ("mascota", "Mascota"), ("tipo", "Tipo"), ("veterinario", "Veterinario"),
             ("motivo", "Motivo"), ("diagnostico", "Diagnóstico"), ("derivaciones", "Derivaciones"),
             ("comprobante", "Comprobante")]
@@ -123,7 +124,13 @@ class PestanaAtenciones(Pantalla):
         self.obs_orden = c.campo("Observaciones de derivación", 300,
                                  multiline=True, min_lines=2, max_lines=4)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
-        return c.pagina(
+        self.tarjeta_derivar = _tarjeta_atencion(
+            "Derivar a laboratorio", "Emite la orden y registra la muestra extraída.", ft.Icons.BIOTECH,
+            _fila_atencion(self, self.atencion, self.estudio, self.tipo_muestra),
+            _fila_atencion(self, self.obs_orden, columnas=1),
+            _acciones_atencion(c.boton("Derivar a laboratorio", self._derivar, ft.Icons.BIOTECH)))
+        self.tarjeta_derivar.key = ft.ScrollKey(self.CLAVE_DERIVAR)
+        self.columna = c.pagina(
             _tarjeta_atencion("Nueva atención", "Consulta, control o urgencia de la mascota.", ft.Icons.MEDICAL_SERVICES,
                               _fila_atencion(self, self.mascota, self.vet, self.fecha, self.tipo, columnas=4),
                               ft.Container(ft.Column([
@@ -133,13 +140,11 @@ class PestanaAtenciones(Pantalla):
                                   padding=ft.Padding.all(12), bgcolor=ft.Colors.GREY_50, border_radius=8),
                               _fila_atencion(self, self.motivo, self.diagnostico, self.observaciones),
                               _acciones_atencion(c.boton("Registrar atención", self._registrar, ft.Icons.SAVE))),
-            _tarjeta_atencion("Derivar a laboratorio", "Emite la orden y registra la muestra extraída.", ft.Icons.BIOTECH,
-                              _fila_atencion(self, self.atencion, self.estudio, self.tipo_muestra),
-                              _fila_atencion(self, self.obs_orden, columnas=1),
-                              _acciones_atencion(c.boton("Derivar a laboratorio", self._derivar, ft.Icons.BIOTECH))),
+            self.tarjeta_derivar,
             _tarjeta_atencion("Historial de atenciones", "Atenciones registradas, derivaciones y comprobantes.",
                               ft.Icons.HISTORY, _tabla_atencion(self, self.tabla, 1400, con_acciones=True)),
             scroll=True)
+        return self.columna
 
     def refrescar(self):
         c.cargar_selector(self.mascota, self.srv.clinica.listar_mascotas())
@@ -208,8 +213,13 @@ class PestanaAtenciones(Pantalla):
             self.app.actualizar()
 
     def _elegir_derivar(self, atencion):
+        """Atajo de la tabla: preselecciona la atención y lleva al formulario de derivación."""
         self.atencion.value = str(atencion["id"])
+        c.establecer_error(self.atencion, None)
         self.app.actualizar()
+        self.app.ok(f"Atención #{atencion['id']} seleccionada: complete el estudio y presione "
+                    "«Derivar a laboratorio».")
+        c.desplazar_y_enfocar(self.app.page, self.columna, self.CLAVE_DERIVAR, self.estudio)
 
     def _derivar(self, e=None):
         def accion():

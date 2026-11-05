@@ -60,7 +60,7 @@ def test_nombre_invalido_no_se_persiste(s, operacion, campo, valor):
         assert clientes == []
 
 
-@pytest.mark.parametrize("dni", ["123", "1234567", "12345678", "00123456"])
+@pytest.mark.parametrize("dni", ["0012345", "1234567", "12345678", "00123456"])
 def test_dni_cadena_y_edicion_del_propio_registro(s, tmp_path, dni):
     cliente = s.clinica.crear_cliente("Ana", "Pérez", dni)
     s.clinica.modificar_cliente(cliente, "María", "Pérez", dni)
@@ -70,7 +70,7 @@ def test_dni_cadena_y_edicion_del_propio_registro(s, tmp_path, dni):
 
 
 @pytest.mark.parametrize("modificar", [False, True])
-@pytest.mark.parametrize("dni", ["", "12", "123456789", "12a", "12 34", "12.345", "１２３", "١٢٣", 123])
+@pytest.mark.parametrize("dni", ["", "12", "123", "123456", "123456789", "1234567a", "12 34", "12.345", "１２３", "١٢٣", 123])
 def test_dni_invalido_rechazado_en_alta_y_edicion(s, modificar, dni):
     if modificar:
         cliente = s.clinica.crear_cliente("Ana", "Pérez", "00123456")

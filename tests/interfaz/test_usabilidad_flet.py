@@ -27,7 +27,7 @@ def envio(ui):
     srv = app.servicios
     cl = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(cl, "Ana", "Pérez", "MP-1")
-    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     at = srv.atencion.registrar_atencion(mascota, vet, FECHA, TipoAtencion.CONSULTA, "Control")
     muestra = srv.laboratorio.derivar(at, "Hemograma", "Sangre", FECHA)["id_muestra"]
@@ -152,7 +152,7 @@ def test_seis_textos_clinicos_se_persisten_y_pdf_preserva_saltos_y_escape(ui, mo
     srv = app.servicios
     cl = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(cl, "Ana", "Pérez", "MP-1")
-    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     texto = "\n".join(f"Línea {i}: <b>sin cerrar & >" for i in range(12))
     parrafos = []
@@ -213,14 +213,14 @@ def test_seis_textos_clinicos_se_persisten_y_pdf_preserva_saltos_y_escape(ui, mo
 
 @pytest.mark.parametrize("campo, invalido, incompleto, correcto", [
     ("nombre_f", "Ana2", "Ana3", "María José"),
-    ("dni_f", "12x", "12", "00123"),
+    ("dni_f", "12x", "12", "0012345"),
     ("email_f", "ana@", "ana@.", "ana@correo.com"),
     ("tel_f", "tel?", "+", "+54 (351) 123-456"),
 ])
 def test_error_persiste_hasta_corregir_sin_bloquear_escritura(ui, campo, invalido, incompleto, correcto):
     app, _ = ui
     p = pestana(app, sp.PestanaClientes)
-    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "00123"
+    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "0012345"
     control = getattr(p, campo)
     control.value = invalido
     p.btn_guardar.on_click(None)
@@ -241,9 +241,9 @@ def test_error_persiste_hasta_corregir_sin_bloquear_escritura(ui, campo, invalid
 def test_corregir_otro_campo_no_borra_error_ni_unicidad(ui):
     app, _ = ui
     srv = app.servicios
-    srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+    srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
     p = pestana(app, sp.PestanaClientes)
-    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "00123"
+    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "0012345"
     p._guardar()
     assert "Ya existe" in p.dni_f.error
     p.email_f.value = "ana@correo.com"; p.email_f.on_change(SimpleNamespace())
@@ -256,7 +256,7 @@ def test_corregir_otro_campo_no_borra_error_ni_unicidad(ui):
 def test_botones_bloquean_operaciones_simultaneas_y_recuperan_el_formulario(ui, monkeypatch):
     app, _ = ui
     p = pestana(app, sp.PestanaClientes)
-    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "00123"
+    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "0012345"
     original = app.servicios.clinica.crear_cliente
     iniciado, continuar = Event(), Event()
     llamadas = []
@@ -360,7 +360,7 @@ def test_errores_tecnicos_no_se_exponen_y_boton_permite_reintentar(ui, tipo):
     assert "información técnica privada" not in pag.mensajes[-1]
     assert "No se pudo completar" in pag.mensajes[-1]
     assert not p.vista.disabled and p.nombre_f.value == "Conservar"
-    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "00123"
+    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "0012345"
     p.btn_guardar.on_click(None)
     assert len(app.servicios.clinica.listar_clientes()) == 1
 
@@ -368,7 +368,7 @@ def test_errores_tecnicos_no_se_exponen_y_boton_permite_reintentar(ui, tipo):
 def test_fallo_de_refresco_despues_de_commit_no_sugiere_repetir_alta(ui, monkeypatch):
     app, pag = ui
     p = pestana(app, sp.PestanaClientes)
-    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "00123"
+    p.nombre_f.value, p.apellido_f.value, p.dni_f.value = "Ana", "Pérez", "0012345"
     monkeypatch.setattr(p, "refrescar", lambda: (_ for _ in ()).throw(RuntimeError("sin vista")))
     p.btn_guardar.on_click(None)
     assert len(Servicios(app.ruta_bd).clinica.listar_clientes()) == 1
@@ -380,7 +380,7 @@ def test_fallo_de_refresco_despues_de_commit_no_sugiere_repetir_alta(ui, monkeyp
 @pytest.mark.parametrize("clase", [sp.PestanaClientes, sp.PestanaMascotas])
 def test_guardar_cambios_y_cancelar_edicion_tienen_etiquetas_claras(ui, clase):
     app, _ = ui
-    cliente = app.servicios.clinica.crear_cliente("Ana", "Pérez", "00123")
+    cliente = app.servicios.clinica.crear_cliente("Ana", "Pérez", "0012345")
     if clase is sp.PestanaMascotas:
         app.servicios.clinica.crear_mascota(cliente, "Luna", "Perro")
     p = pestana(app, clase)
@@ -394,11 +394,18 @@ def test_guardar_cambios_y_cancelar_edicion_tienen_etiquetas_claras(ui, clase):
 
 def test_avisos_tienen_cierre_y_errores_mas_tiempo_y_reporte_etiqueta_clara(ui, monkeypatch):
     app, pag = ui
-    avisos = []
-    monkeypatch.setattr(pag, "show_dialog", avisos.append)
-    app.ok("Guardado"); app.error("Error para leer")
-    assert avisos[0].duration == 4500 and avisos[1].duration == 10000
-    assert all(a.show_close_icon for a in avisos)
+    duraciones, avisos = [], []
+
+    class Temporizador:  # registra la duración sin esperar
+        def __init__(self, segundos, funcion):
+            duraciones.append(segundos)
+        def start(self):
+            pass
+    monkeypatch.setattr("veterinaria.interfaz.app.Timer", Temporizador)
+    app.ok("Guardado"); avisos.append(pag.overlay[-1])
+    app.error("Error para leer"); avisos.append(pag.overlay[-1])
+    assert duraciones == [4.5, 10.0]
+    assert all(a.content.controls[-1].tooltip == "Cerrar" for a in avisos)
     assert boton_en(app.pantallas[4], "Generar reporte")
 
 

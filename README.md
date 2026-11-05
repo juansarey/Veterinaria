@@ -1220,7 +1220,7 @@ Los servicios validan altas y modificaciones aunque se invoquen sin Flet:
 
 - Nombres y apellidos de personas: letras Unicode, acentos, ñ, espacios, guiones y apóstrofes;
   máximo 80 caracteres, sin números. Se normaliza Unicode a NFC y se recortan espacios sobrantes.
-- DNI: cadena de 3 a 8 dígitos ASCII, sin puntos ni espacios internos. Conserva los ceros iniciales
+- DNI: cadena de 7 u 8 dígitos ASCII, sin puntos ni espacios internos. Conserva los ceros iniciales
   y la unicidad existente; editar el propio DNI sin cambiarlo está permitido.
 - Teléfono y correo: opcionales. El teléfono admite números y separadores habituales (máximo 30);
   el correo se comprueba como `usuario@dominio`, sin espacios (máximo 120), sin consultas de red.

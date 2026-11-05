@@ -99,7 +99,7 @@ class PestanaClientes(Pantalla):
         self.encabezado = ft.Text("Nuevo cliente", size=18, weight=ft.FontWeight.W_600)
         self.nombre_f = c.campo("Nombre", validar=lambda t: validar_nombre_persona(t, "Nombre"), helper="Obligatorio")
         self.apellido_f = c.campo("Apellido", validar=lambda t: validar_nombre_persona(t, "Apellido"), helper="Obligatorio")
-        self.dni_f = c.campo("DNI", 160, validar=validar_dni, helper="3 a 8 dígitos, sin puntos")
+        self.dni_f = c.campo("DNI", 160, validar=validar_dni, helper="7 u 8 dígitos, sin puntos")
         self.tel_f = c.campo("Teléfono", 180, validar=validar_telefono, helper="Opcional")
         self.email_f = c.campo("Email", 260, validar=validar_email, helper="Opcional")
         self.btn_cancelar = c.boton("Cancelar edición", self._limpiar, ft.Icons.CLOSE, False)

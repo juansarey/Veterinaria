@@ -28,7 +28,7 @@ def base(tmp_path, monkeypatch):
     monkeypatch.setattr(ls, "ahora", lambda: reloj["ahora"])
     ruta = tmp_path / "laboratorio.db"
     srv = Servicios(ruta)
-    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "00123")
+    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     clinica = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(clinica, "Luis", "Gómez", "MP-1")

@@ -28,7 +28,7 @@ def base(tmp_path, monkeypatch):
     srv = Servicios(ruta)
     cl = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(cl, "Ana", "Pérez", "MP-1")
-    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     return srv, ruta, cl, vet, mascota
 

@@ -143,8 +143,8 @@ def validar_nombre_persona(valor, campo: str) -> str:
 
 def validar_dni(valor) -> str:
     texto = requerir_texto(valor, "DNI")
-    if re.fullmatch(r"[0-9]{3,8}", texto) is None:
-        raise ErrorNegocio("DNI: ingrese entre 3 y 8 dígitos, sin puntos ni espacios internos.", "DNI")
+    if re.fullmatch(r"[0-9]{7,8}", texto) is None:
+        raise ErrorNegocio("DNI: ingrese 7 u 8 dígitos, sin puntos ni espacios internos.", "DNI")
     return texto
 
 

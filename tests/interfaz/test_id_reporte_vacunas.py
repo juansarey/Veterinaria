@@ -18,7 +18,7 @@ REFERENCIA = date(2026, 11, 3)
 def base(ui):
     app, pag = ui
     srv = app.servicios
-    cliente = srv.clinica.crear_cliente("Juan", "Pérez", "00123")
+    cliente = srv.clinica.crear_cliente("Juan", "Pérez", "0012345")
     srv.clinica.crear_mascota(cliente, "Otra", "Gato")  # los IDs visibles no son números de fila
     mascotas = [srv.clinica.crear_mascota(cliente, "Rocky", "Perro") for _ in range(2)]
     vacunas = [srv.atencion.crear_vacuna(nombre, "Perro", True) for nombre in ("Antirrábica", "Quíntuple")]

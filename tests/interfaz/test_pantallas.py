@@ -16,10 +16,24 @@ from veterinaria.servicios.errores import ErrorNegocio
 from veterinaria.servicios.fachada import Servicios
 
 
+class _CapaAvisos(list):
+    """Capa superior simulada: registra el texto de cada notificación agregada."""
+
+    def __init__(self, mensajes):
+        super().__init__()
+        self._mensajes = mensajes
+
+    def append(self, control):
+        if isinstance(getattr(control, "data", None), str):
+            self._mensajes.append(control.data)
+        super().append(control)
+
+
 class PaginaFalsa:
     def __init__(self):
         self.window = SimpleNamespace(width=0, height=0)
         self.mensajes, self.dialogos, self.pickers, self.controles = [], [], [], []
+        self.overlay = _CapaAvisos(self.mensajes)
         self.title = self.theme = self.padding = self.bgcolor = None
 
     def add(self, *controles): self.controles.extend(controles)
@@ -63,7 +77,8 @@ def test_cinco_secciones_y_todas_se_construyen(ui):
     assert len(app.pantallas) == len(SECCIONES) == 5
     for i in range(5):
         app.ir_a(i)
-        assert app.contenido.content is app.pantallas[i].vista
+        assert app.pantalla_actual is app.pantallas[i]
+        assert [p.vista.visible for p in app.pantallas] == [j == i for j in range(5)]
     for seccion in app.pantallas:
         for hija in getattr(seccion, "hijas", []):
             hija.refrescar()

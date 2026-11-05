@@ -147,7 +147,7 @@ def test_rechazos_muestran_motivo_sin_exito_y_permiten_reintento(vista, monkeypa
     srv = app.servicios
     entidad, objetivo = "veterinario", vet
     if dependencia in {"turno", "atencion"}:
-        cliente = srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+        cliente = srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
         mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
         fecha = datetime(2026, 11, 4, 9)
         if dependencia == "turno":
@@ -203,7 +203,7 @@ def test_fallo_intermedio_desde_flet_no_muestra_exito_y_luego_permite_guardar(vi
 def test_confirmar_conserva_compatibilidad_con_bajas_existentes(vista, monkeypatch, entidad):
     app, pagina, dialogos, _, _, _ = vista
     srv = app.servicios
-    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "00123")
+    cliente = srv.clinica.crear_cliente("Luis", "Gómez", "0012345")
     if entidad == "mascota":
         objetivo = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
         p = pestana(app, sp.PestanaMascotas)
