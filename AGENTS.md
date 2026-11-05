@@ -680,7 +680,7 @@ Flet están implementados. La interfaz sólo invoca a `servicios/`: no contiene 
 de negocio.
 
 La Etapa 1 de validaciones generales comprueba entradas en servicios y presenta errores junto
-a los campos en Flet. El DNI conserva su tipo cadena y sus ceros iniciales (3 a 8 dígitos ASCII).
+a los campos en Flet. El DNI conserva su tipo cadena y sus ceros iniciales (7 u 8 dígitos ASCII).
 Se permiten mascotas del mismo responsable con nombre y especie coincidentes: su identidad
 es `id_mascota`, y las etiquetas ambiguas conservan el sufijo `[#ID]`. No se reescriben registros
 históricos. La Etapa 2 valida en servicios que el nacimiento no sea futuro y que las nuevas
@@ -730,6 +730,16 @@ el rollback actual. Flet limita los calendarios operativos a hoy y asocia el err
 perder valores. No se aplica esta restricción a turnos, próximas dosis, referencias de reportes ni
 lecturas históricas. Las cadenas existentes con fechas futuras no se modifican automáticamente.
 No se modifican dominio, DAO, esquema SQLite, State, Strategy, DER ni UML por esta validación.
+
+Ajustes de la interfaz Flet. En Envío y recepción y en Empaquetado, un envío o remito recibido con
+el precinto roto se muestra como «Rechazado». Una operación correcta en una pestaña de Laboratorio
+recarga también las demás, incluido Seguimiento. Las cinco secciones permanecen montadas y sólo se
+alterna su visibilidad: cambiar `contenido.content` hacía que Flet volviera a montar la sección y
+enviara además los cambios hechos mientras estaba oculta, lo que duplicaba filas. Cada fila de tabla
+lleva una clave estable. El botón «Derivar a laboratorio» del historial de atenciones preselecciona
+la atención, avisa, desplaza hasta el formulario y enfoca «Estudio solicitado». Las notificaciones
+aparecen arriba a la derecha, en la capa superior, con cierre manual y automático (4,5 s / 10 s).
+El DNI admite 7 u 8 dígitos. No se modifican dominio, DAO, esquema SQLite, State, Strategy, DER ni UML.
 
 ---
 

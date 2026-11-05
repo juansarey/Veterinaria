@@ -12,6 +12,13 @@ from veterinaria.servicios.base import validar_texto
 from veterinaria.servicios.exportador import exportar_comprobante_resultado_pdf
 
 
+def _estado_visible(estado, recibido, precinto_roto):
+    """Un envío/remito recibido con el precinto roto se muestra como «Rechazado»."""
+    if recibido:
+        return "RECHAZADO" if precinto_roto else "RECIBIDO"
+    return estado
+
+
 def _tarjeta_laboratorio(titulo, descripcion, icono, *controles):
     cabecera = ft.Row([
         ft.Container(ft.Icon(icono, size=24, color=c.COLOR), padding=ft.Padding.all(10),
@@ -169,9 +176,12 @@ class PestanaEmpaquetado(Pantalla):
         c.cargar_selector(self.clinica, self.srv.clinica.listar_clinicas())
         c.cargar_selector(self.conservadora, lab.listar_conservadoras(solo_disponibles=True))
         remitos = lab.listar_remitos()
-        c.llenar_tabla(self.tabla, self.COLS, remitos, lambda r: [
+        filas = [{**r, "estado": _estado_visible(r["estado"], r["estado"] == "RECIBIDO",
+                                                 r["precinto"].endswith("(ROTO)"))} for r in remitos]
+        c.llenar_tabla(self.tabla, self.COLS, filas, lambda r: [
             c.boton_icono(ft.Icons.LOCK_OPEN, "Liberar la conservadora (ya recibida)",
-                          lambda e, r=r: self._liberar(r), visible=r["estado"] == "RECIBIDO", grupo=self)])
+                          lambda e, r=r: self._liberar(r), visible=r["estado"] in ("RECIBIDO", "RECHAZADO"),
+                          grupo=self)])
         self._cargar_muestras()
 
     def _cargar_muestras(self):
@@ -271,7 +281,9 @@ class PestanaEnvio(Pantalla):
         envios = lab.listar_envios()
         c.cargar_selector(self.envio, [e for e in envios
                                      if not e["recibido"] and e["estado"] in ("EN_TRANSITO", "ENTREGADO")])
-        c.llenar_tabla(self.tabla, self.COLS, envios)
+        filas = [{**e, "estado": _estado_visible(e["estado"], e["recibido"], e["precinto"] == "ROTO")}
+                 for e in envios]
+        c.llenar_tabla(self.tabla, self.COLS, filas)
 
     def _despachar(self, e=None):
         def accion():
@@ -456,3 +468,4 @@ class SeccionLaboratorio(Seccion):
     nombre, icono = "Laboratorio", ft.Icons.BIOTECH
     subtitulo = "Del empaquetado en la clínica al resultado del análisis"
     PESTANAS = [PestanaEmpaquetado, PestanaEnvio, PestanaResultados, PestanaSeguimiento]
+    refrescar_hermanas = True   # cada cambio de estado de una muestra actualiza el seguimiento

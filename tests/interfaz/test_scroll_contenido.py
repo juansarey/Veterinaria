@@ -61,7 +61,7 @@ def test_jerarquia_tiene_un_scroll_vertical_sin_alturas_que_oculten_contenido(ui
 def test_laboratorio_muestra_todas_las_filas_y_preserva_formularios_al_navegar(ui, cantidad):
     app, _ = ui
     srv = app.servicios
-    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "00123")
+    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     clinica = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(clinica, "Luis", "Gómez", "MP-1")

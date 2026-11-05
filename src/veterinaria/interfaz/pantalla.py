@@ -22,6 +22,7 @@ class Pantalla:
     def __init__(self, app):
         self.app = app
         self.srv = app.servicios
+        self.seccion = None          # la asigna la Seccion que contiene a esta pestaña
         self._bloqueo_accion = Lock()
         self.vista = self.construir()
 
@@ -63,6 +64,10 @@ class Pantalla:
         actualizado = True
         try:
             self.refrescar()
+            if self.seccion is not None and self.seccion.refrescar_hermanas:
+                for hermana in self.seccion.hijas:
+                    if hermana is not self:
+                        hermana.refrescar()
         except Exception:
             traceback.print_exc()
             actualizado = False
@@ -80,9 +85,12 @@ class Seccion(Pantalla):
 
     subtitulo = ""
     PESTANAS: list[type[Pantalla]] = []
+    refrescar_hermanas = False  # True: una operación exitosa recarga también las otras pestañas
 
     def construir(self):
         self.hijas = [clase(self.app) for clase in self.PESTANAS]
+        for hija in self.hijas:
+            hija.seccion = self
         tabs = ft.Tabs(
             length=len(self.hijas), selected_index=0, expand=True, on_change=self._cambio,
             content=ft.Column(expand=True, controls=[

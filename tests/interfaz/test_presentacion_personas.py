@@ -14,7 +14,7 @@ from veterinaria.interfaz import seccion_personas as sp
 def test_redimensionar_no_consulta_servicios_ni_pierde_edicion_y_errores(ui, monkeypatch, clase):
     app, _ = ui
     srv = app.servicios.clinica
-    cliente = srv.crear_cliente("Ana", "Pérez", "00123")
+    cliente = srv.crear_cliente("Ana", "Pérez", "0012345")
     srv.crear_mascota(cliente, "Luna", "Gato", abrir_historia=True)
     p = pestana(app, clase)
     p.refrescar()
@@ -64,7 +64,7 @@ def test_filas_caben_en_el_ancho_util_y_expanden_los_selectores(ui, ancho, colum
 def test_listado_aprovecha_el_ancho_y_conserva_acciones_y_filas(ui, clase, minimo):
     app, _ = ui
     p = pestana(app, clase)
-    cliente = p.srv.clinica.crear_cliente("Ana", "Pérez", "00123")
+    cliente = p.srv.clinica.crear_cliente("Ana", "Pérez", "0012345")
     if clase is sp.PestanaMascotas:
         p.srv.clinica.crear_mascota(cliente, "Luna", "Gato", abrir_historia=True)
     p.refrescar()

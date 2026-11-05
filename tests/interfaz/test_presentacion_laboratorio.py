@@ -22,7 +22,7 @@ def laboratorio(ui, reloj):
     reloj["ahora"] = INICIO + timedelta(hours=5)
     app, pag = ui
     srv = app.servicios
-    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "00123")
+    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "0012345")
     mascota = srv.clinica.crear_mascota(cliente, "Luna", "Perro", abrir_historia=True)
     clinica = srv.clinica.crear_clinica("Centro", "Calle 1")
     vet = srv.clinica.crear_veterinario(clinica, "Luis", "Gómez", "MP-1")

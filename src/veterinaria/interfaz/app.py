@@ -2,6 +2,7 @@
 
 import webbrowser
 from pathlib import Path
+from threading import Timer
 
 import flet as ft
 
@@ -24,7 +25,14 @@ class AplicacionVeterinaria:
         self.servicios = servicios
         self.ruta_bd = ruta_bd
         self.pantallas = [clase(self) for clase in SECCIONES]
-        self.contenido = ft.Container(expand=True, padding=ft.Padding.all(20))
+        # Las cinco secciones quedan montadas y sólo se alterna su visibilidad. Si se cambiara
+        # contenido.content, Flet volvería a montar la sección y enviaría además los cambios hechos
+        # mientras estaba oculta: las filas nuevas aparecían duplicadas (p. ej. en Seguimiento).
+        for pantalla in self.pantallas:
+            pantalla.vista.visible = False
+        self.contenido = ft.Container(expand=True, padding=ft.Padding.all(20), content=ft.Column(
+            [p.vista for p in self.pantallas], expand=True, spacing=0))
+        self.pantalla_actual = None
         self.riel = ft.NavigationRail(
             selected_index=0, label_type=ft.NavigationRailLabelType.ALL, min_width=104,
             bgcolor=ft.Colors.WHITE, on_change=self._cambio,
@@ -55,7 +63,9 @@ class AplicacionVeterinaria:
     def ir_a(self, indice: int):
         pantalla = self.pantallas[indice]
         pantalla.refrescar()                 # datos frescos cada vez que se entra a una sección
-        self.contenido.content = pantalla.vista
+        for otra in self.pantallas:
+            otra.vista.visible = otra is pantalla
+        self.pantalla_actual = pantalla
         self.actualizar()
 
     # ------------------------------------------------------------- utilidades
@@ -85,8 +95,39 @@ class AplicacionVeterinaria:
         self._aviso(mensaje, ft.Colors.RED_700, duracion=10000)
 
     def _aviso(self, mensaje: str, color, duracion=4500):
-        self.page.show_dialog(ft.SnackBar(ft.Text(mensaje, color=ft.Colors.WHITE), bgcolor=color,
-                                          duration=duracion, show_close_icon=True))
+        """Notificación arriba a la derecha (capa superior de la página); reemplaza a la anterior
+        y se cierra sola tras ``duracion`` milisegundos o con su botón."""
+        self._quitar_de_capa(getattr(self, "_aviso_actual", None))
+        icono = ft.Icons.CHECK_CIRCLE if color == ft.Colors.GREEN_700 else ft.Icons.ERROR
+        aviso = ft.Container(
+            ft.Row([ft.Icon(icono, color=ft.Colors.WHITE, size=22),
+                    ft.Text(mensaje, color=ft.Colors.WHITE, size=14, expand=True, no_wrap=False),
+                    ft.IconButton(ft.Icons.CLOSE, icon_color=ft.Colors.WHITE, icon_size=18,
+                                  tooltip="Cerrar", on_click=lambda e: self._cerrar_aviso(aviso))],
+                   spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            data=mensaje, bgcolor=color, border_radius=10, width=400, top=20, right=20,
+            padding=ft.Padding.only(left=16, top=8, right=6, bottom=8),
+            shadow=ft.BoxShadow(blur_radius=12, spread_radius=1, color=ft.Colors.with_opacity(0.3, ft.Colors.BLACK)))
+        self._aviso_actual = aviso
+        self.page.overlay.append(aviso)
+        self.actualizar()
+        temporizador = Timer(duracion / 1000, lambda: self._cerrar_aviso(aviso))
+        temporizador.daemon = True
+        temporizador.start()
+
+    def _quitar_de_capa(self, aviso) -> bool:
+        for i, control in enumerate(self.page.overlay):
+            if control is aviso:
+                del self.page.overlay[i]
+                return True
+        return False
+
+    def _cerrar_aviso(self, aviso):
+        if self._quitar_de_capa(aviso):
+            try:
+                self.actualizar()
+            except Exception:  # la ventana pudo cerrarse mientras corría el temporizador
+                pass
 
     def abrir_archivo(self, ruta):
         """Abre un PDF/CSV exportado con el programa predeterminado."""

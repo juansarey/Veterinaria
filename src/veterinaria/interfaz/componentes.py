@@ -25,7 +25,8 @@ ESTADOS = {
     "EN_TRANSITO": ("En tránsito", ft.Colors.AMBER_700), "RECIBIDA": ("Recibida", ft.Colors.TEAL_500),
     "ANALIZADA": ("Analizada", ft.Colors.GREEN_600), "RECHAZADA": ("Rechazada", ft.Colors.RED_600),
     "GENERADO": ("Generado", ft.Colors.INDIGO_400), "DESPACHADO": ("Despachado", ft.Colors.AMBER_700),
-    "RECIBIDO": ("Recibido", ft.Colors.GREEN_600), "ENTREGADO": ("Entregado", ft.Colors.TEAL_500),
+    "RECIBIDO": ("Recibido", ft.Colors.GREEN_600), "RECHAZADO": ("Rechazado", ft.Colors.RED_600),
+    "ENTREGADO": ("Entregado", ft.Colors.TEAL_500),
     "EN_PROCESO": ("En proceso", ft.Colors.AMBER_700), "COMPLETADA": ("Completada", ft.Colors.GREEN_600),
     "CANCELADA": ("Cancelada", ft.Colors.GREY_500), "DISPONIBLE": ("Disponible", ft.Colors.GREEN_600),
     "EN_USO": ("En uso", ft.Colors.AMBER_700), "INTACTO": ("Intacto", ft.Colors.GREEN_600),
@@ -137,6 +138,23 @@ def enfocar_control(page, control):
             ejecutar(foco)
         except (RuntimeError, AssertionError):
             pass  # una página aún sin sesión no puede recibir foco
+
+
+def desplazar_y_enfocar(page, columna: ft.Column, clave: str, control=None):
+    """Lleva la columna desplazable hasta el control con ``ft.ScrollKey(clave)`` y luego
+    pone el foco en ``control``. Igual que el foco, Flet 1.x lo hace mediante una corrutina."""
+    ejecutar = getattr(page, "run_task", None)
+    if not ejecutar:
+        return
+
+    async def mover():
+        await columna.scroll_to(scroll_key=clave, duration=350)
+        if control is not None:
+            await control.focus()
+    try:
+        ejecutar(mover)
+    except (RuntimeError, AssertionError):
+        pass  # una página aún sin sesión no puede desplazarse
 
 
 _SEPARADORES = {2: "/", 4: "/", 8: " ", 10: ":"}
@@ -419,13 +437,20 @@ def _celda(clave, valor) -> ft.DataCell:
 
 def llenar_tabla(tabla: ft.DataTable, columnas: list[tuple[str, str]], filas: list[dict],
                  acciones=None):
-    """``acciones(fila)`` devuelve la lista de botones de icono de esa fila (última columna)."""
-    rows = []
-    for fila in filas:
+    """``acciones(fila)`` devuelve la lista de botones de icono de esa fila (última columna).
+
+    Cada fila lleva una clave estable (su ``id``). Sin clave, Flet reemplaza filas enteras al
+    refrescar y la ventana conserva la última fila anterior: aparece una fila «fantasma»
+    duplicada con el estado viejo. Con clave, sólo envía las celdas que cambiaron.
+    """
+    rows, vistas = [], {}
+    for posicion, fila in enumerate(filas):
+        base = fila.get("id", f"#{posicion}")
+        vistas[base] = vistas.get(base, 0) + 1
         celdas = [_celda(clave, fila.get(clave)) for clave, _ in columnas]
         if acciones is not None:
             celdas.append(ft.DataCell(ft.Row(acciones(fila), spacing=0, tight=True)))
-        rows.append(ft.DataRow(cells=celdas))
+        rows.append(ft.DataRow(cells=celdas, key=f"fila-{base}-{vistas[base]}"))
     tabla.rows = rows
 
 
