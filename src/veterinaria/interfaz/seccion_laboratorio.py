@@ -201,6 +201,9 @@ class PestanaEmpaquetado(Pantalla):
         self.app.actualizar()
 
     def _crear_cons(self, e=None):
+        # El alta es independiente de los datos y errores del empaquetado.
+        for control in (self.clinica, self.conservadora, self.fecha, self.precinto):
+            c.limpiar_error(control)
         if self.ejecutar(lambda: self.srv.laboratorio.crear_conservadora(self.codigo_cons.value),
                          "Conservadora agregada.", {"Código": self.codigo_cons}):
             self.codigo_cons.value = ""
@@ -211,6 +214,9 @@ class PestanaEmpaquetado(Pantalla):
                       "Conservadora liberada: ya puede usarse en otro remito.")
 
     def _empaquetar(self, e=None):
+        # El código sólo es obligatorio al agregar una nueva conservadora.
+        c.limpiar_error(self.codigo_cons)
+
         def accion():
             ids = [i for i, ch in self.checks.items() if ch.value]
             return self.srv.laboratorio.empaquetar(
