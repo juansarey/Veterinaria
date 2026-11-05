@@ -9,6 +9,86 @@ from veterinaria.interfaz.pantalla import Pantalla, Seccion
 from veterinaria.servicios.base import validar_dni, validar_email, validar_nombre_persona, validar_telefono, validar_texto
 
 
+def _fila_campos(pantalla, *controles, columnas=3):
+    """Distribución local al ancho útil de la tarjeta, con altura natural para errores."""
+    for control in controles:
+        control.width = None
+        control.border = ft.OutlineInputBorder(border_radius=8)
+        control.content_padding = ft.Padding.symmetric(horizontal=12, vertical=14)
+        control.label_style = ft.TextStyle(size=14, weight=ft.FontWeight.W_500)
+        if isinstance(control, ft.Dropdown):
+            control.expanded_insets = ft.Padding.all(0)
+            control.helper_style = ft.TextStyle(size=12, color=ft.Colors.GREY_700)
+        else:
+            control.helper_max_lines = 3
+            control.error_max_lines = 10
+    fila = ft.Row(list(controles), wrap=True, spacing=14, run_spacing=16,
+                  vertical_alignment=ft.CrossAxisAlignment.START)
+
+    def ajustar_ancho(e):
+        if e.width <= 0:
+            return
+        cantidad = min(columnas, 3 if e.width >= 820 else 2 if e.width >= 560 else 1)
+        # Evita que el redondeo del cliente envíe la última celda a otra fila.
+        ancho = int((e.width - 14 * (cantidad - 1)) / cantidad * 100) / 100
+        if any(control.width != ancho for control in controles):
+            for control in controles:
+                control.width = ancho
+            pantalla.app.actualizar()
+
+    fila.on_size_change = ajustar_ancho
+    return fila
+
+
+def _cabecera(titulo, descripcion, icono):
+    return ft.Row([
+        ft.Container(ft.Icon(icono, color=c.COLOR, size=24), padding=ft.Padding.all(10),
+                     bgcolor=ft.Colors.TEAL_50, border_radius=10),
+        ft.Column([titulo, c.nota(descripcion)], spacing=3, expand=True),
+    ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.START)
+
+
+def _tarjeta_personas(*controles):
+    tarjeta = c.tarjeta(*controles)
+    tarjeta.border_radius = 14
+    tarjeta.content.spacing = 18
+    tarjeta.content.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+    return tarjeta
+
+
+def _acciones_formulario(cancelar, guardar):
+    guardar.style = ft.ButtonStyle(
+        shape=ft.RoundedRectangleBorder(radius=8),
+        padding=ft.Padding.symmetric(horizontal=24, vertical=14))
+    return ft.Row([cancelar, guardar], wrap=True, spacing=12, run_spacing=10,
+                  alignment=ft.MainAxisAlignment.END)
+
+
+def _listado_personas(pantalla, titulo, descripcion, icono, ancho_minimo, *controles):
+    tabla = pantalla.tabla
+    tabla.columns[-1].label.value = "Acciones"
+    tabla.heading_row_color = ft.Colors.TEAL_50
+    tabla.heading_row_height = 44
+    tabla.data_row_min_height = 46
+    tabla.data_row_max_height = float("inf")
+    tabla.horizontal_margin = 16
+    marco = c.contenedor_tabla(tabla)
+
+    def ajustar_ancho(e):
+        # Se mide el marco interior: no depende del ancho de ventana ni de la barra lateral.
+        if e.width <= 0:
+            return
+        ancho = max(ancho_minimo, round(e.width, 2))
+        if tabla.width != ancho:
+            tabla.width = ancho
+            pantalla.app.actualizar()
+
+    marco.on_size_change = ajustar_ancho
+    return _tarjeta_personas(
+        _cabecera(ft.Text(titulo, size=18, weight=ft.FontWeight.W_600), descripcion, icono),
+        *controles, marco)
+
+
 class PestanaClientes(Pantalla):
     nombre, icono = "Clientes", ft.Icons.PEOPLE
     COLS = [("id", "ID"), ("apellido", "Apellido"), ("nombre", "Nombre"), ("dni", "DNI"),
@@ -16,7 +96,7 @@ class PestanaClientes(Pantalla):
 
     def construir(self):
         self.editando = None
-        self.encabezado = ft.Text("Nuevo cliente", size=16, weight=ft.FontWeight.W_600)
+        self.encabezado = ft.Text("Nuevo cliente", size=18, weight=ft.FontWeight.W_600)
         self.nombre_f = c.campo("Nombre", validar=lambda t: validar_nombre_persona(t, "Nombre"), helper="Obligatorio")
         self.apellido_f = c.campo("Apellido", validar=lambda t: validar_nombre_persona(t, "Apellido"), helper="Obligatorio")
         self.dni_f = c.campo("DNI", 160, validar=validar_dni, helper="3 a 8 dígitos, sin puntos")
@@ -26,13 +106,19 @@ class PestanaClientes(Pantalla):
         self.btn_cancelar.visible = False
         self.btn_guardar = c.boton("Guardar", self._guardar, ft.Icons.SAVE)
         self.buscar = c.campo("Buscar por nombre, apellido o DNI", 340, on_change=self._al_buscar)
+        self.buscar.label = "Buscar clientes"
+        self.buscar.hint_text = "Nombre, apellido o DNI"
+        self.buscar.prefix_icon = ft.Icons.SEARCH
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         self.datos = []
         return c.pagina(
-            c.tarjeta(self.encabezado, c.fila(self.nombre_f, self.apellido_f, self.dni_f),
-                      c.fila(self.tel_f, self.email_f),
-                      c.fila(self.btn_guardar, self.btn_cancelar)),
-            ft.Row([self.buscar]), c.contenedor_tabla(self.tabla))
+            _tarjeta_personas(
+                _cabecera(self.encabezado, "Datos personales y de contacto del cliente.", ft.Icons.PERSON_ADD),
+                _fila_campos(self, self.nombre_f, self.apellido_f, self.dni_f),
+                _fila_campos(self, self.tel_f, self.email_f, columnas=2),
+                _acciones_formulario(self.btn_cancelar, self.btn_guardar)),
+            _listado_personas(self, "Clientes registrados", "Listado de clientes del sistema.",
+                              ft.Icons.PEOPLE, 860, _fila_campos(self, self.buscar, columnas=1)))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_clientes()
@@ -107,13 +193,15 @@ class PestanaMascotas(Pantalla):
 
     def construir(self):
         self.editando = None
-        self.encabezado = ft.Text("Nueva mascota", size=16, weight=ft.FontWeight.W_600)
+        self.encabezado = ft.Text("Nueva mascota", size=18, weight=ft.FontWeight.W_600)
         self.resp = c.selector("Responsable (obligatorio)", 340)
         self.nombre_f = c.campo("Nombre", 200, validar=lambda t: validar_texto(t, "Nombre", 80, True), helper="Obligatorio")
         self.especie = c.desplegable_fijo("Especie", c.ESPECIES, "Perro")
         self.raza_f = c.campo("Raza", 200, validar=lambda t: validar_texto(t, "Raza", 80), helper="Opcional")
         self.nac_f = c.campo_fecha("Nacimiento", fecha_minima=date.min, fecha_maxima=date.today, opcional=True)
         self.nac_f.helper = "Opcional; hasta hoy"
+        for boton in self.nac_f.suffix.controls:
+            boton.width = boton.height = 24
         self.sexo = c.desplegable_fijo("Sexo", ["", "Macho", "Hembra"], "", 130)
         self.btn_cancelar = c.boton("Cancelar edición", self._limpiar, ft.Icons.CLOSE, False)
         self.btn_cancelar.visible = False
@@ -121,11 +209,15 @@ class PestanaMascotas(Pantalla):
         self.btn_guardar = c.boton("Guardar", self._guardar, ft.Icons.SAVE)
         self.datos = []
         return c.pagina(
-            c.tarjeta(self.encabezado, self.resp,
-                      c.fila(self.nombre_f, self.especie, self.raza_f, self.nac_f, self.sexo),
-                      c.nota("Al registrar una mascota se abre automáticamente su historia clínica."),
-                      c.fila(self.btn_guardar, self.btn_cancelar)),
-            c.contenedor_tabla(self.tabla))
+            _tarjeta_personas(
+                _cabecera(self.encabezado, "Datos de la mascota y su responsable.", ft.Icons.PETS),
+                _fila_campos(self, self.resp, columnas=1),
+                _fila_campos(self, self.nombre_f, self.especie, self.raza_f),
+                _fila_campos(self, self.nac_f, self.sexo, columnas=2),
+                c.nota("Al registrar una mascota se abre automáticamente su historia clínica."),
+                _acciones_formulario(self.btn_cancelar, self.btn_guardar)),
+            _listado_personas(self, "Mascotas registradas", "Historia clínica, edición y baja de mascotas.",
+                              ft.Icons.PETS, 1040))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_mascotas()

@@ -1086,6 +1086,93 @@ se apilan cuando el ancho disponible no permite dos columnas. La rueda del mouse
 el acceso al contenido inferior con distintos tamaños y escalas requieren comprobación manual en
 la ventana real de Flet.
 
+En **Clientes y mascotas**, las dos pestañas tienen tarjetas separadas para el formulario y el
+listado, con encabezados e iconos en verde. Los campos se distribuyen en una, dos o tres columnas
+según el ancho útil medido dentro de la tarjeta; los desplegables ocupan también ese ancho en su
+control interno. Guardar y Cancelar edición se alinean a la derecha y se apilan si hace falta.
+La búsqueda existente de clientes se integra en su listado. Las tablas aprovechan el ancho
+disponible, conservan el desplazamiento horizontal y permiten crecer a las filas con textos largos.
+Cada pestaña mantiene un único desplazamiento vertical. Se conservan campos, validadores,
+calendario, altas, edición, bajas con confirmación e historia clínica, incluido el responsable
+bloqueado al editar una mascota. Los cambios están acotados a la presentación de esta sección.
+Se inspeccionaron capturas del cliente nativo Flet 1.0.5 a 600, 900, 1360 y 1600 px, con SQLite
+temporal, errores localizados y edición. Queda pendiente la revisión del usuario en su ventana real,
+en particular foco y teclado, rueda del mouse, acceso a las acciones y escalado de Windows.
+
+En **Turnos → Agenda de turnos**, **Nuevo turno** sigue la referencia visual: etiquetas sobre
+los campos, dos columnas iguales para veterinario y mascota, tres para fecha/hora/duración,
+motivo opcional a todo el ancho y botón de reserva a la derecha. El ancho se calcula al cambiar
+el tamaño real de la tarjeta, descontando su borde, padding y separaciones, y se aplica también
+al control interno de los Dropdown. Las filas se apilan cuando no hay espacio suficiente.
+Se conservan los selectores de calendario y reloj, los errores localizados y sus mensajes, las
+duraciones internas y la protección contra doble clic. La aclaración de agenda permanece al pie.
+Se verificó el renderizado del cliente nativo Flet 1.0.5 con ventanas de 600, 800, 1050 y 1500 px,
+incluido un error localizado, usando una base temporal. Los iconos y la tipografía conservan
+el estilo nativo de la aplicación.
+
+La segunda etapa visual completa **Turnos** en sus dos pestañas. El listado de turnos tiene
+encabezado propio, filtros adaptables y las acciones existentes **Ver agenda** y **Ver todos**
+alineadas a la derecha. Conserva Inicio, Fin, Veterinario, Mascota, Motivo, Estado y las acciones
+de confirmar, marcar atendido y cancelar según el estado. En **Veterinarios y agendas** se separan
+los formularios de alta y los listados de clínicas y profesionales en tarjetas, con campos
+proporcionales y botones a la derecha. La agenda semanal conserva los siete días, agrupados en
+una fila o varias según el espacio, sus selectores de hora y la aclaración del horario común.
+Las tres tablas ocupan el ancho útil, mantienen el scroll horizontal y permiten crecer a las
+filas con textos largos. Cada pestaña conserva un solo scroll vertical. Se mantienen todos los
+validadores, callbacks funcionales, confirmaciones y bajas restringidas. Se inspeccionaron capturas
+nativas a 600, 900, 1360 y 1600 px con SQLite temporal, estados de turnos y errores localizados.
+La revisión en la ventana del usuario debe incluir teclado, rueda, acceso a las acciones
+de las tablas y escalado de Windows.
+
+La tercera etapa visual comprende **Atención**, con sus pestañas **Atenciones** y **Vacunas**.
+Registro, derivación e historial se presentan en tarjetas diferenciadas, con campos alineados
+según su ancho útil y botones a la derecha. Los avisos de historia clínica y vacunación tienen
+espacio propio y texto ajustable; las vacunas pendientes siguen siendo informativas y permiten
+registrar consultas, controles y urgencias. Se conserva el botón para abrir una historia faltante.
+Diagnóstico y observaciones mantienen su entrada multilínea y todo su contenido. Las derivaciones
+conservan estudio, tipo de muestra, observaciones y las acciones del historial, incluido el PDF.
+En Vacunas, aplicaciones y catálogo se distribuyen en dos columnas cuando hay ancho suficiente
+y se apilan en ventanas angostas, conservando sus formularios, listados, obligatoriedad, filtro
+por especie y fechas. Las tablas ocupan el ancho disponible y conservan su scroll horizontal;
+cada pestaña mantiene un único scroll vertical. No cambian validadores, servicios ni generación
+de comprobantes. Se inspeccionaron capturas nativas a 600, 900, 1360 y 1600 px, con SQLite temporal,
+avisos largos, errores y mascotas sin historia. La revisión visual del usuario debe incluir
+teclado, rueda, calendario/reloj, acciones de tablas y escalado.
+
+La cuarta etapa visual comprende las cuatro pestañas de **Laboratorio**. Empaquetado organiza
+los datos del remito, el alta de conservadoras y las muestras pendientes, con etiquetas completas
+en varias líneas cuando hace falta. Se conservan las muestras desmarcadas y las acciones de
+empaquetar, precintar y liberar conservadoras recibidas. Los remitos tienen su propia tarjeta.
+En Envío y recepción, los dos formularios se muestran en columnas cuando hay ancho suficiente
+y se apilan según el espacio real disponible. Se mantienen la elección explícita del estado del
+precinto, los avisos de rechazo y todos los campos de fecha y observaciones. Resultados diferencia
+el registro de la muestra y su listado, conservando el bloqueo de muestras rechazadas, el texto
+multilínea, el guardado y la generación y reemisión del comprobante PDF. Seguimiento mantiene
+el filtro completo de estados y el acceso a la cadena de custodia inmutable. Las cuatro tablas
+aprovechan el ancho disponible con desplazamiento horizontal y filas de altura natural; cada
+pestaña conserva un solo desplazamiento vertical. Los ajustes son locales a la presentación y
+mantienen servicios, DAO, transacciones, validadores y generación de PDF sin cambios.
+Se inspeccionaron capturas nativas a 600, 900, 1360 y 1600 px, con SQLite temporal, etiquetas
+largas, precinto obligatorio, errores, resultados rechazados y cadena de custodia. La revisión
+visual del usuario debe incluir teclado, rueda, calendarios/reloj, muestras, acciones de tablas
+y escalado de Windows.
+
+La quinta y última etapa visual comprende **Reportes**. Los parámetros y las acciones se agrupan
+en una tarjeta, y la vista previa en otra, con los mismos cuatro reportes, títulos, columnas,
+filas y conteos existentes. El selector aprovecha el espacio disponible y los campos se apilan
+en ventanas angostas; la fecha aclara que sólo corresponde a Vacunas pendientes y conserva su
+calendario y sus límites originales. Generar reporte y Exportar PDF/CSV se alinean a la derecha
+y envuelven en varias filas cuando hace falta. La tabla se dimensiona según el ancho medido y
+la cantidad de columnas, incluso al cambiar de reporte sin redimensionar la ventana, manteniendo
+un único desplazamiento vertical y el horizontal de la tabla. Los títulos y errores largos
+pueden ocupar varias líneas. Se conservan los estados inicial, sin datos y de error, incluida
+la limpieza de una vista previa inválida antes de exportar. No se incorporan indicadores ni
+columnas de las imágenes; cálculos, Strategy, servicios y generación de PDF/CSV siguen sin cambios.
+Se inspeccionaron capturas nativas a 600, 900, 1360 y 1600 px con SQLite temporal y los cuatro
+reportes, datos vacíos, errores y acceso horizontal a las columnas. Las cinco etapas visuales
+están implementadas; queda la revisión final del usuario en la ventana real, incluidos teclado,
+foco, calendario, rueda, botones de generación/exportación, columnas y escalado de Windows.
+
 ### Recorrido sugerido para la demostración
 
 1. **Clientes y mascotas** → alta de una mascota sin responsable: no se guarda (RN01).
@@ -1308,7 +1395,7 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest -p no:cacheprovider
 ```
 
-La suite completa contiene actualmente 1170 casos y finaliza sin fallos.
+La suite completa contiene actualmente 1261 casos y finaliza sin fallos.
 
 La Etapa 2 agrega 57 regresiones con reloj controlado y SQLite temporal para límites temporales,
 lectura histórica, calendarios, conservación y reinicio de fechas, avisos de vacunas, estados de
@@ -1358,6 +1445,48 @@ La columna **ID mascota** del reporte de vacunas pendientes agrega 12 regresione
 responsable, varias vacunas por ID, lectura tras reabrir, fechas de aplicación/vencimiento,
 vista previa, generación real de PDF/CSV y exportación desde Flet. También se comprueba que los
 otros tres reportes conservan sus columnas. No se modifican expectativas de pruebas anteriores.
+
+La distribución de **Nuevo turno** agrega 23 casos en `tests/interfaz/test_presentacion_turnos.py`
+con reloj controlado, página simulada y SQLite temporal: proporciones según el ancho real,
+ausencia de desbordamientos por borde o redondeo, expansión interna de selectores, reservas y
+duraciones persistidas, errores con foco y conservación de entradas, corrección de selectores,
+calendario/reloj, protección frente a doble ejecución y conservación de filtros y profesionales.
+No se modifican pruebas anteriores. La revisión también utiliza capturas del cliente nativo.
+
+La primera etapa visual de **Clientes y mascotas** agrega diez casos en
+`tests/interfaz/test_presentacion_personas.py`: anchos útiles y límites entre columnas, expansión
+de selectores, conservación de datos, edición y errores al redimensionar sin consultas a servicios,
+tablas adaptables con todas sus acciones y un único desplazamiento vertical. Se conserva la
+cobertura funcional anterior. Antes de esta etapa, la suite local completa aprobó 1193 casos.
+
+La segunda etapa visual de **Turnos** agrega diez casos en
+`tests/interfaz/test_presentacion_turnos.py` (33 en total en ese archivo): redimensionado de
+formularios y filtros sin consultas ni pérdida de valores, días, horarios o errores, anchos de
+las tres tablas, conservación de sus acciones y transiciones después de ajustar la vista.
+La comprobación del encabezado de acciones se adapta al nuevo rótulo visible **Acciones**,
+conservando las demás verificaciones funcionales y las pruebas de bajas restringidas existentes.
+
+La tercera etapa visual de **Atención** agrega once casos en
+`tests/interfaz/test_presentacion_atencion.py`: conservación de entradas, textos clínicos, fechas,
+avisos, errores y callbacks al redimensionar, adaptación de los dos paneles de Vacunas sin scrolls
+verticales internos, tablas completas con sus acciones y continuidad del registro, derivación,
+catálogo y aplicación después de cambiar el ancho. Se comprueba que el aviso de vacunas pendientes
+permite atender y que el catálogo mantiene el filtro por especie. Las pruebas anteriores no cambian.
+
+La cuarta etapa visual de **Laboratorio** agrega 21 casos en
+`tests/interfaz/test_presentacion_laboratorio.py`: redimensionado de las cuatro pestañas sin
+consultas ni pérdida de entradas, fechas, observaciones, errores o muestras desmarcadas, adaptación
+de despacho y recepción, tablas completas con sus acciones, elección obligatoria del precinto y
+recepción con precinto intacto o roto después de cambiar el ancho. Se verifica la disponibilidad
+del registro de resultados según el estado de la muestra y la presentación íntegra de etiquetas
+largas conservando su selección al refrescar. Las pruebas funcionales anteriores no cambian.
+
+La quinta etapa visual de **Reportes** agrega 16 casos en
+`tests/interfaz/test_presentacion_reportes.py`: conservación de parámetros, datos, filas, columnas,
+errores y callbacks al redimensionar los cuatro reportes, cambio de ancho según las columnas
+sin otra medición, ocho exportaciones reales a PDF/CSV con sus parámetros y encabezados originales,
+limpieza de vistas inválidas, estado sin datos y selección de fechas futuras desde el calendario.
+Las pruebas anteriores permanecen sin cambios; antes de esta etapa la suite aprobó 1245 casos.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro

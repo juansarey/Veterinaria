@@ -12,6 +12,107 @@ from veterinaria.servicios.base import validar_texto
 from veterinaria.servicios.exportador import exportar_comprobante_resultado_pdf
 
 
+def _tarjeta_laboratorio(titulo, descripcion, icono, *controles):
+    cabecera = ft.Row([
+        ft.Container(ft.Icon(icono, size=24, color=c.COLOR), padding=ft.Padding.all(10),
+                     bgcolor=ft.Colors.TEAL_50, border_radius=10),
+        ft.Column([ft.Text(titulo, size=18, weight=ft.FontWeight.W_600), c.nota(descripcion)],
+                  spacing=3, expand=True),
+    ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.START)
+    tarjeta = c.tarjeta(cabecera, *controles)
+    tarjeta.border_radius = 14
+    tarjeta.content.spacing = 18
+    tarjeta.content.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+    return tarjeta
+
+
+def _fila_laboratorio(pantalla, *controles, columnas=3):
+    """Ajusta sólo la presentación, conservando entradas, validadores y callbacks."""
+    for control in controles:
+        control.width = 240  # ancho inicial acotado, antes de recibir la medición de la fila
+        control.border = ft.OutlineInputBorder(border_radius=8)
+        control.content_padding = ft.Padding.symmetric(horizontal=12, vertical=14)
+        control.label_style = ft.TextStyle(size=14, weight=ft.FontWeight.W_500)
+        if isinstance(control, ft.Dropdown):
+            control.expanded_insets = ft.Padding.all(0)
+        else:
+            control.error_max_lines = 10
+            control.helper_max_lines = 4
+            sufijo = control.suffix
+            for boton in (sufijo.controls if isinstance(sufijo, ft.Row) else [sufijo] if sufijo else []):
+                boton.width = boton.height = 24
+    fila = ft.Row(list(controles), wrap=True, spacing=14, run_spacing=16,
+                  vertical_alignment=ft.CrossAxisAlignment.START)
+
+    def ajustar_ancho(e):
+        if e.width <= 0:
+            return
+        if columnas == 4:
+            cantidad = 4 if e.width >= 1120 else 2 if e.width >= 560 else 1
+        else:
+            cantidad = min(columnas, 3 if e.width >= 820 else 2 if e.width >= 560 else 1)
+        ancho = int((e.width - 14 * (cantidad - 1)) / cantidad * 100) / 100
+        if any(control.width != ancho for control in controles):
+            for control in controles:
+                control.width = ancho
+            pantalla.app.actualizar()
+
+    fila.on_size_change = ajustar_ancho
+    return fila
+
+
+def _acciones_laboratorio(*botones):
+    for boton in botones:
+        boton.style = ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8),
+                                    padding=ft.Padding.symmetric(horizontal=22, vertical=14))
+    return ft.Row(list(botones), wrap=True, spacing=12, run_spacing=10,
+                  alignment=ft.MainAxisAlignment.END)
+
+
+def _tabla_laboratorio(pantalla, tabla, ancho_minimo, con_acciones=False):
+    if con_acciones:
+        tabla.columns[-1].label.value = "Acciones"
+    tabla.heading_row_color = ft.Colors.TEAL_50
+    tabla.heading_row_height = 44
+    tabla.data_row_min_height = 46
+    tabla.data_row_max_height = float("inf")
+    tabla.horizontal_margin = 16
+    marco = c.contenedor_tabla(tabla)
+
+    def ajustar_ancho(e):
+        if e.width <= 0:
+            return
+        ancho = max(ancho_minimo, round(e.width, 2))
+        if tabla.width != ancho:
+            tabla.width = ancho
+            pantalla.app.actualizar()
+
+    marco.on_size_change = ajustar_ancho
+    return marco
+
+
+def _paneles_laboratorio(pantalla, *tarjetas):
+    # Wrap no admite hijos Flex, ni siquiera el expand=False que trae la tarjeta.
+    for tarjeta in tarjetas:
+        tarjeta.expand = None
+        tarjeta.width = 320
+    paneles = ft.Row(list(tarjetas), wrap=True, spacing=14, run_spacing=14,
+                     vertical_alignment=ft.CrossAxisAlignment.START)
+
+    def ajustar_ancho(e):
+        if e.width <= 0:
+            return
+        cantidad = 2 if e.width >= 1120 else 1
+        ancho = int((e.width - 14 * (cantidad - 1)) / cantidad * 100) / 100
+        if any(tarjeta.width != ancho for tarjeta in tarjetas):
+            for tarjeta in tarjetas:
+                tarjeta.width = ancho
+            pantalla.app.actualizar()
+
+    paneles.on_size_change = ajustar_ancho
+    return paneles
+
+
 class PestanaEmpaquetado(Pantalla):
     nombre, icono = "Empaquetado", ft.Icons.INVENTORY_2
     COLS = [("id", "Remito"), ("fecha", "Emitido"), ("clinica", "Clínica de origen"),
@@ -28,22 +129,40 @@ class PestanaEmpaquetado(Pantalla):
                                        helper="Hasta el momento actual. Vuelve al momento actual al guardar.")
         self.precinto = c.campo("Código del precinto (opcional)", 240,
                                 validar=lambda t: validar_texto(t, "Código del precinto", 50))
-        self.muestras_box = ft.Column(spacing=0)
+        self.muestras_box = ft.Column(spacing=4, horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
         self.checks: dict[int, ft.Checkbox] = {}
+
+        def ajustar_etiquetas(e):
+            if e.width <= 0:
+                return
+            ancho = max(1, int((e.width - 56) * 100) / 100)
+            if any(check.label.width != ancho for check in self.checks.values()):
+                for check in self.checks.values():
+                    check.label.width = ancho
+                self.app.actualizar()
+
+        self.muestras_box.on_size_change = ajustar_etiquetas
         marco_muestras = ft.Container(
             self.muestras_box,
-            padding=ft.Padding.all(8), border=ft.Border.all(1, ft.Colors.BLUE_GREY_100), border_radius=8)
+            padding=ft.Padding.all(12), bgcolor=ft.Colors.GREY_50,
+            border=ft.Border.all(1, ft.Colors.BLUE_GREY_100), border_radius=8)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         return c.pagina(
-            c.tarjeta(c.nota("Se genera el remito biológico y el precinto sanitario; las muestras pasan a "
-                             "«Empaquetada» y la conservadora queda en uso."),
-                      c.fila(self.clinica, self.conservadora, self.fecha, self.codigo_cons,
-                             c.boton("Agregar conservadora", self._crear_cons, ft.Icons.ADD, False)),
-                      ft.Text("Muestras extraídas pendientes de envío:", weight=ft.FontWeight.W_500),
-                      marco_muestras,
-                      c.fila(self.precinto, c.boton("Empaquetar y precintar", self._empaquetar, ft.Icons.INVENTORY_2)),
-                      encabezado="Empaquetar muestras en una conservadora"),
-            c.contenedor_tabla(self.tabla))
+            _tarjeta_laboratorio("Empaquetar muestras en una conservadora",
+                                 "Se genera el remito biológico y el precinto sanitario; las muestras pasan a "
+                                 "«Empaquetada» y la conservadora queda en uso.", ft.Icons.INVENTORY_2,
+                                 _fila_laboratorio(self, self.clinica, self.conservadora, self.fecha,
+                                                   self.codigo_cons, columnas=4),
+                                 _acciones_laboratorio(c.boton("Agregar conservadora", self._crear_cons,
+                                                               ft.Icons.ADD, False)),
+                                 ft.Text("Muestras extraídas pendientes de envío:", weight=ft.FontWeight.W_500),
+                                 marco_muestras,
+                                 _fila_laboratorio(self, self.precinto, columnas=1),
+                                 _acciones_laboratorio(c.boton("Empaquetar y precintar", self._empaquetar,
+                                                               ft.Icons.INVENTORY_2))),
+            _tarjeta_laboratorio("Remitos emitidos", "Remitos biológicos generados desde la clínica.",
+                                 ft.Icons.LOCAL_SHIPPING,
+                                 _tabla_laboratorio(self, self.tabla, 1200, con_acciones=True)))
 
     def refrescar(self):
         lab = self.srv.laboratorio
@@ -60,8 +179,10 @@ class PestanaEmpaquetado(Pantalla):
         previas = {i: ch.value for i, ch in self.checks.items()}
         libres = [m for m in self.srv.laboratorio.listar_muestras()
                   if m["estado"] == "EXTRAIDA" and (idc is None or m["id_clinica"] == idc)]
-        self.checks = {m["id"]: ft.Checkbox(label=f"{m['etiqueta']} · {m['estudio']} · extraída {m['extraccion']}",
-                                            value=previas.get(m["id"], not previas)) for m in libres}
+        self.checks = {m["id"]: ft.Checkbox(
+            label=ft.Text(f"{m['etiqueta']} · {m['estudio']} · extraída {m['extraccion']}",
+                          size=12, no_wrap=False, width=220),
+            value=previas.get(m["id"], not previas)) for m in libres}
         self.muestras_box.controls = list(self.checks.values()) or [
             ft.Text("No hay muestras extraídas pendientes de envío.", italic=True, size=12)]
 
@@ -122,21 +243,26 @@ class PestanaEnvio(Pantalla):
         self.obs_rec = c.campo("Observaciones de recepción", 300,
                                multiline=True, min_lines=2, max_lines=4)
         self.tabla = c.crear_tabla(self.COLS)
-        despacho = c.tarjeta(
-            self.remito, c.fila(self.salida, self.obs_envio),
+        despacho = _tarjeta_laboratorio(
+            "1. Despacho desde la clínica", "Salida del remito hacia el laboratorio central.", ft.Icons.LOCAL_SHIPPING,
+            _fila_laboratorio(self, self.remito, columnas=1),
+            _fila_laboratorio(self, self.salida, columnas=1),
+            _fila_laboratorio(self, self.obs_envio, columnas=1),
             c.nota("Sólo se despachan remitos con conservadora, muestras y un precinto intacto."),
-            c.boton("Despachar", self._despachar, ft.Icons.LOCAL_SHIPPING),
-            encabezado="1. Despacho desde la clínica")
-        recepcion = c.tarjeta(
-            self.envio, c.fila(self.f_recepcion, self.obs_rec), self.integro,
+            _acciones_laboratorio(c.boton("Despachar", self._despachar, ft.Icons.LOCAL_SHIPPING)))
+        recepcion = _tarjeta_laboratorio(
+            "2. Recepción en el laboratorio central", "Llegada del envío y verificación del precinto.", ft.Icons.FACT_CHECK,
+            _fila_laboratorio(self, self.envio, columnas=1),
+            _fila_laboratorio(self, self.f_recepcion, columnas=1),
+            _fila_laboratorio(self, self.obs_rec, columnas=1),
+            _fila_laboratorio(self, self.integro, columnas=1),
             c.nota("Si el precinto llega roto, las muestras quedan «Rechazadas» y no se procesan."),
-            c.boton("Registrar recepción", self._recibir, ft.Icons.FACT_CHECK),
-            encabezado="2. Recepción en el laboratorio central")
+            _acciones_laboratorio(c.boton("Registrar recepción", self._recibir, ft.Icons.FACT_CHECK)))
         return c.pagina(
-            ft.ResponsiveRow([ft.Container(despacho, col={"xs": 12, "lg": 6}),
-                              ft.Container(recepcion, col={"xs": 12, "lg": 6})],
-                             spacing=14, run_spacing=14),
-            c.contenedor_tabla(self.tabla), scroll=True)
+            _paneles_laboratorio(self, despacho, recepcion),
+            _tarjeta_laboratorio("Envíos y recepciones", "Estado del transporte, fechas y precintos.",
+                                 ft.Icons.LOCAL_SHIPPING, _tabla_laboratorio(self, self.tabla, 1100)),
+            scroll=True)
 
     def refrescar(self):
         lab = self.srv.laboratorio
@@ -205,15 +331,23 @@ class PestanaResultados(Pantalla):
                                      ft.Icons.ASSIGNMENT_TURNED_IN)
         self.btn_registrar.disabled = True
         self.aviso_muestra = c.nota("Seleccione una muestra recibida para registrar el resultado.")
+        self.aviso_muestra.size = 13
+        self.aviso_muestra.no_wrap = False
         return c.pagina(
-            c.tarjeta(c.fila(self.muestra, self.fecha), self.resultado,
-                      c.fila(self.obs, self.btn_registrar), self.aviso_muestra,
-                      c.nota("Sólo las muestras recibidas pueden analizarse; las rechazadas figuran "
-                             "para que quede claro por qué no se procesan. Al registrar el resultado "
-                             "se emite el comprobante en PDF."),
-                      encabezado="Resultado de análisis"),
-            c.subtitulo_texto("Resultados emitidos"),
-            c.contenedor_tabla(self.tabla), scroll=True)
+            _tarjeta_laboratorio("Resultado de análisis", "Registro y comprobante del resultado de la muestra.",
+                                 ft.Icons.ASSIGNMENT_TURNED_IN,
+                                 _fila_laboratorio(self, self.muestra, self.fecha, columnas=2),
+                                 ft.Container(self.aviso_muestra, padding=ft.Padding.all(12),
+                                              bgcolor=ft.Colors.GREY_50, border_radius=8),
+                                 _fila_laboratorio(self, self.resultado, columnas=1),
+                                 _fila_laboratorio(self, self.obs, columnas=1),
+                                 c.nota("Sólo las muestras recibidas pueden analizarse; las rechazadas figuran "
+                                        "para que quede claro por qué no se procesan. Al registrar el resultado "
+                                        "se emite el comprobante en PDF."),
+                                 _acciones_laboratorio(self.btn_registrar)),
+            _tarjeta_laboratorio("Resultados emitidos", "Resultados registrados y reemisión de comprobantes.",
+                                 ft.Icons.ASSIGNMENT_TURNED_IN,
+                                 _tabla_laboratorio(self, self.tabla, 1300, con_acciones=True)), scroll=True)
 
     def refrescar(self):
         opciones = []
@@ -285,8 +419,11 @@ class PestanaSeguimiento(Pantalla):
         self.filtro.on_select = self._filtrar
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         return c.pagina(
-            c.tarjeta(c.fila(self.filtro, c.nota("Cada cambio de estado queda registrado y no puede modificarse."))),
-            c.contenedor_tabla(self.tabla))
+            _tarjeta_laboratorio("Seguimiento de muestras", "Consulta de estado y cadena de custodia.", ft.Icons.TIMELINE,
+                                 _fila_laboratorio(self, self.filtro),
+                                 c.nota("Cada cambio de estado queda registrado y no puede modificarse.")),
+            _tarjeta_laboratorio("Muestras registradas", "Muestras biológicas, remitos y estados actuales.",
+                                 ft.Icons.BIOTECH, _tabla_laboratorio(self, self.tabla, 1400, con_acciones=True)))
 
     def refrescar(self):
         estado = self.filtro.value
