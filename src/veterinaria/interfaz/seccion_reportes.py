@@ -33,11 +33,11 @@ class SeccionReportes(Pantalla):
         return c.pagina(
             c.titulo("Reportes", "Vista previa en pantalla y exportación a PDF o CSV"),
             c.tarjeta(c.fila(self.reporte, self.fecha_ref,
-                             c.boton("Ver en pantalla", self._generar, ft.Icons.TABLE_VIEW),
-                             c.boton("Exportar PDF", lambda e: self._exportar("pdf"), ft.Icons.PICTURE_AS_PDF, False),
-                             c.boton("Exportar CSV", lambda e: self._exportar("csv"), ft.Icons.DOWNLOAD, False))),
+                             c.boton("Generar reporte", self._generar, ft.Icons.TABLE_VIEW),
+                             c.boton("Exportar PDF", lambda e: self._exportar("pdf"), ft.Icons.PICTURE_AS_PDF, False, grupo=self),
+                             c.boton("Exportar CSV", lambda e: self._exportar("csv"), ft.Icons.DOWNLOAD, False, grupo=self))),
             c.fila(self.titulo_rep, self.resumen),
-            c.contenedor_tabla(self.tabla, expandir=True))
+            c.contenedor_tabla(self.tabla))
 
     def refrescar(self):
         pass
@@ -51,12 +51,12 @@ class SeccionReportes(Pantalla):
 
         def accion():
             rep = self.srv.reportes
-            clave = self.reporte.value
+            clave = c.opcion_de(self.reporte)
             if clave == "vacunas":
                 return rep.vacunas_pendientes(c.leer_fecha(self.fecha_ref.value, "Fecha de referencia"))
             return {"atenciones": rep.atenciones_derivaciones, "rechazadas": rep.muestras_rechazadas,
                     "tiempos": rep.tiempos}[clave]()
-        datos = self.ejecutar(accion)
+        datos = self.ejecutar(accion, campos={"Reporte": self.reporte, "Fecha de referencia": self.fecha_ref})
         if isinstance(datos, dict):
             self.actual = {**datos, "clave": self.reporte.value}
             self.titulo_rep.value = datos["titulo"]
@@ -80,7 +80,8 @@ class SeccionReportes(Pantalla):
                 self.app.ruta_bd, f"reporte_{self.reporte.value}", formato,
                 lambda ruta: exportador(ruta, datos))
 
-        ruta = self.ejecutar(accion)
+        ruta = self.ejecutar(accion, mensaje_error=f"No se pudo generar el archivo {formato.upper()}. "
+                              "Revise los permisos y la ubicación del archivo y vuelva a intentar.")
         if ruta is not None:
             self.app.ok(f"Reporte exportado: {ruta}")
             self.app.abrir_archivo(ruta)

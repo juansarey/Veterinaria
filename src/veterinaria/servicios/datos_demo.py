@@ -66,7 +66,7 @@ def cargar_demo(servicios: Servicios) -> None:
     mascotas = [clin.crear_mascota(clientes[i], n, e, r, f, s, abrir_historia=True)
                 for i, n, e, r, f, s in datos_mascotas]
 
-    # --- vacunas: Toby y Mora quedan con pendientes (para el reporte y el bloqueo)
+    # --- vacunas: Toby y Mora quedan con pendientes (para el reporte y las advertencias)
     rabia = aten.crear_vacuna("Antirrábica", "Perro", True)
     quintuple = aten.crear_vacuna("Quíntuple", "Perro", True)
     triple_felina = aten.crear_vacuna("Triple felina", "Gato", True)
@@ -80,7 +80,7 @@ def cargar_demo(servicios: Servicios) -> None:
     aten.registrar_aplicacion(mascotas[5], rabia, date.today() - timedelta(days=500),
                               date.today() - timedelta(days=135))     # vencida
 
-    # --- atenciones (los pacientes con vacunas al día)
+    # --- atenciones de demostración
     def hora(dia, h, m=0):
         return datetime.combine(dia, time(h, m))
 

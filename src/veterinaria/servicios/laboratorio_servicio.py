@@ -25,22 +25,34 @@ from veterinaria.persistencia.precinto_sanitario_dao import PrecintoSanitarioDAO
 from veterinaria.persistencia.recepcion_dao import RecepcionDAO
 from veterinaria.persistencia.remito_biologico_dao import RemitoBiologicoDAO
 from veterinaria.persistencia.resultado_analisis_dao import ResultadoAnalisisDAO
-from veterinaria.servicios.base import ServicioBase, ahora, fmt_fecha_hora, requerir_texto
+from veterinaria.servicios.base import ServicioBase, ahora, fmt_fecha_hora, requerir_texto, validar_texto
 from veterinaria.servicios.errores import ErrorNegocio
 
 
 class LaboratorioServicio(ServicioBase):
+    @staticmethod
+    def _fecha_realizada(fecha, campo):
+        """Un acontecimiento nuevo no puede ser futuro; se compara al minuto del reloj local."""
+        referencia = ahora()
+        fecha = referencia if fecha is None else fecha
+        if not isinstance(fecha, datetime) or fecha.tzinfo is not None:
+            raise ErrorNegocio(f"«{campo}»: ingrese una fecha y hora locales válidas.", campo)
+        if fecha.replace(second=0, microsecond=0) > referencia.replace(second=0, microsecond=0):
+            raise ErrorNegocio(f"«{campo}» no puede ser posterior al momento actual.", campo)
+        return fecha
+
     # ---------------------------------------------------------------- órdenes
     def crear_orden(self, id_atencion, estudio_solicitado, observaciones="",
                     fecha_emision: datetime | None = None) -> int:
+        fecha_emision = self._fecha_realizada(fecha_emision, "Fecha de emisión")
         with self._tx() as con:
             return self._crear_orden(con, id_atencion, estudio_solicitado, observaciones, fecha_emision)
 
     def _crear_orden(self, con, id_atencion, estudio_solicitado, observaciones, fecha_emision) -> int:
-        estudio = requerir_texto(estudio_solicitado, "Estudio solicitado")
+        estudio = requerir_texto(estudio_solicitado, "Estudio solicitado", 200)
         atencion = AtencionDAO(con).obtener_por_id(id_atencion)
         if atencion is None:
-            raise ErrorNegocio("La atención no existe.")
+            raise ErrorNegocio("La atención no existe.", "Atención")
         orden = OrdenDerivacionLaboratorio(
             self._siguiente_id(con, "orden_derivacion_laboratorio"),
             fecha_emision or ahora(), estudio, (observaciones or "").strip(),
@@ -52,7 +64,7 @@ class LaboratorioServicio(ServicioBase):
     def derivar(self, id_atencion, estudio_solicitado, tipo_muestra,
                 fecha_extraccion: datetime | None = None, observaciones="") -> dict:
         """Emite la orden de derivación y registra su muestra (EXTRAIDA) en un solo paso."""
-        fecha = fecha_extraccion or ahora()
+        fecha = self._fecha_realizada(fecha_extraccion, "Fecha de extracción")
         with self._tx() as con:
             id_orden = self._crear_orden(con, id_atencion, estudio_solicitado, observaciones, fecha)
             id_muestra = self._registrar_muestra(con, id_orden, tipo_muestra, fecha, "")
@@ -87,11 +99,14 @@ class LaboratorioServicio(ServicioBase):
     def registrar_muestra(self, id_orden, tipo_muestra, fecha_extraccion: datetime,
                           observaciones="") -> int:
         """RN06: toda muestra nace en estado EXTRAIDA."""
+        if fecha_extraccion is None:
+            raise ErrorNegocio("Ingrese la fecha de extracción.", "Fecha de extracción")
+        fecha_extraccion = self._fecha_realizada(fecha_extraccion, "Fecha de extracción")
         with self._tx() as con:
             return self._registrar_muestra(con, id_orden, tipo_muestra, fecha_extraccion, observaciones)
 
     def _registrar_muestra(self, con, id_orden, tipo_muestra, fecha_extraccion, observaciones) -> int:
-        tipo = requerir_texto(tipo_muestra, "Tipo de muestra")
+        tipo = requerir_texto(tipo_muestra, "Tipo de muestra", 80)
         orden = OrdenDerivacionLaboratorioDAO(con).obtener_por_id(id_orden)
         if orden is None:
             raise ErrorNegocio("La orden no existe.")
@@ -148,8 +163,10 @@ class LaboratorioServicio(ServicioBase):
 
     # ----------------------------------------------------------- conservadoras
     def crear_conservadora(self, codigo) -> int:
-        codigo = requerir_texto(codigo, "Código")
+        codigo = requerir_texto(codigo, "Código", 50)
         with self._tx() as con:
+            if any(c.codigo == codigo for c in ConservadoraIsotermicaDAO(con).listar()):
+                raise ErrorNegocio("Ya existe una conservadora con ese código.", "Código")
             id_c = self._siguiente_id(con, "conservadora_isotermica")
             ConservadoraIsotermicaDAO(con).crear(ConservadoraIsotermica(id_c, codigo))
         return id_c
@@ -187,6 +204,7 @@ class LaboratorioServicio(ServicioBase):
     # ------------------------------------------------------------------ remitos
     def crear_remito(self, id_clinica, id_conservadora, observaciones="",
                      fecha_emision: datetime | None = None) -> int:
+        fecha_emision = self._fecha_realizada(fecha_emision, "Fecha de emisión")
         with self._tx() as con:
             return self._crear_remito(con, id_clinica, id_conservadora, observaciones, fecha_emision)
 
@@ -208,6 +226,7 @@ class LaboratorioServicio(ServicioBase):
     def agregar_muestras_a_remito(self, id_remito, ids_muestra, fecha_hora: datetime | None = None,
                                   observaciones=""):
         """RN07: al empaquetar, la muestra pasa de EXTRAIDA a EMPAQUETADA."""
+        fecha_hora = self._fecha_realizada(fecha_hora, "Fecha de empaquetado")
         with self._tx() as con:
             self._agregar_muestras(con, id_remito, ids_muestra, fecha_hora, observaciones)
 
@@ -223,13 +242,13 @@ class LaboratorioServicio(ServicioBase):
             id_muestra = muestra.id_muestra
             if remito.estado != EstadoRemito.GENERADO:
                 raise ErrorNegocio("El remito ya fue despachado: no admite más muestras.")
-            if not remito.agregar_muestra(muestra, fecha_hora or ahora(),
+            if not remito.agregar_muestra(muestra, fecha_hora,
                                           (observaciones or "").strip()):
                 estado = muestra.estado.obtener_nombre()
                 if estado == "EXTRAIDA":
                     raise ErrorNegocio(
                         f"La muestra #{id_muestra} no puede empaquetarse: la fecha de empaquetado "
-                        "no puede ser anterior a la extracción."
+                        "no puede ser anterior a la extracción.", "Fecha de empaquetado"
                     )
                 raise ErrorNegocio(
                     f"La muestra #{id_muestra} no puede empaquetarse "
@@ -260,7 +279,10 @@ class LaboratorioServicio(ServicioBase):
             return self._asignar_precinto(con, id_remito, codigo)
 
     def _asignar_precinto(self, con, id_remito, codigo) -> int:
-        codigo = requerir_texto(codigo, "Código del precinto")
+        codigo = requerir_texto(codigo, "Código del precinto", 50)
+        if any(r.obtener_precinto() is not None and r.obtener_precinto().codigo == codigo
+               for r in RemitoBiologicoDAO(con).listar()):
+            raise ErrorNegocio("Ya existe un precinto con ese código.", "Código del precinto")
         remito = RemitoBiologicoDAO(con).obtener_por_id(id_remito)
         if remito is None:
             raise ErrorNegocio("El remito no existe.")
@@ -275,7 +297,8 @@ class LaboratorioServicio(ServicioBase):
         """Genera el remito, empaqueta las muestras y coloca el precinto en un solo paso."""
         if not ids_muestra:
             raise ErrorNegocio("Seleccione al menos una muestra.")
-        fecha = fecha or ahora()
+        codigo_precinto = validar_texto(codigo_precinto, "Código del precinto", 50)
+        fecha = self._fecha_realizada(fecha, "Fecha de empaquetado")
         with self._tx() as con:
             muestras = self._validar_clinica_muestras(con, id_clinica, ids_muestra)
             id_remito = self._crear_remito(con, id_clinica, id_conservadora, observaciones, fecha)
@@ -323,6 +346,7 @@ class LaboratorioServicio(ServicioBase):
     # ------------------------------------------------------------ envío (RN08/09)
     def despachar_remito(self, id_remito, fecha_salida: datetime | None = None,
                          observaciones="") -> int:
+        fecha_salida = self._fecha_realizada(fecha_salida, "Salida")
         with self._tx() as con:
             remito = RemitoBiologicoDAO(con).obtener_por_id(id_remito)
             if remito is None:
@@ -333,8 +357,8 @@ class LaboratorioServicio(ServicioBase):
             envio = Envio(self._siguiente_id(con, "envio"), remito, (observaciones or "").strip())
             envio_dao = EnvioDAO(con)
             envio_dao.crear(envio)
-            if not envio.iniciar(fecha_salida or ahora()):
-                raise ErrorNegocio("No se pudo despachar: revise las fechas de las muestras.")
+            if not envio.iniciar(fecha_salida):
+                raise ErrorNegocio("No se pudo despachar: revise las fechas de las muestras.", "Salida")
             envio_dao.guardar_despacho(envio)
             return envio.id_envio
 
@@ -354,6 +378,7 @@ class LaboratorioServicio(ServicioBase):
         return None
 
     def registrar_llegada(self, id_envio, fecha_llegada: datetime | None = None):
+        fecha_llegada = self._fecha_realizada(fecha_llegada, "Llegada")
         with self._tx() as con:
             self._registrar_llegada(con, id_envio, fecha_llegada)
 
@@ -362,10 +387,10 @@ class LaboratorioServicio(ServicioBase):
         envio = dao.obtener_por_id(id_envio)
         if envio is None:
             raise ErrorNegocio("El envío no existe.")
-        if not envio.registrar_llegada(fecha_llegada or ahora()):
+        if not envio.registrar_llegada(fecha_llegada):
             raise ErrorNegocio(
                 "No se pudo registrar la llegada (el envío debe estar en tránsito y la "
-                "llegada no puede ser anterior a la salida)."
+                "llegada no puede ser anterior a la salida).", "Llegada"
             )
         dao.actualizar(envio)
 
@@ -394,6 +419,7 @@ class LaboratorioServicio(ServicioBase):
     def registrar_recepcion(self, id_envio, fecha_hora: datetime | None = None,
                             observaciones="") -> dict:
         """Verifica el precinto: INTACTO → RECIBIDA; ROTO → RECHAZADA."""
+        fecha_hora = self._fecha_realizada(fecha_hora, "Recepción")
         with self._tx() as con:
             return self._registrar_recepcion(con, id_envio, fecha_hora, observaciones)
 
@@ -406,11 +432,11 @@ class LaboratorioServicio(ServicioBase):
         if envio.fecha_hora_llegada is None:
             raise ErrorNegocio("Registre primero la llegada del envío.")
         recepcion = Recepcion(self._siguiente_id(con, "recepcion"), envio,
-                              fecha_hora or ahora(), (observaciones or "").strip())
+                              fecha_hora, (observaciones or "").strip())
         intacto = recepcion.verificar_precinto()
         if not recepcion.procesar_recepcion():
             raise ErrorNegocio(
-                "No se pudo procesar la recepción (la fecha no puede ser anterior a la llegada)."
+                "No se pudo procesar la recepción (la fecha no puede ser anterior a la llegada).", "Recepción"
             )
         RecepcionDAO(con).guardar_recepcion(recepcion)
         return {
@@ -424,7 +450,7 @@ class LaboratorioServicio(ServicioBase):
                        observaciones="") -> dict:
         """Recepción en un paso: registra la llegada, anota el estado real del precinto
         (si llegó roto queda ROTO) y verifica el precinto (RN10-RN12)."""
-        fecha = fecha or ahora()
+        fecha = self._fecha_realizada(fecha, "Recepción")
         with self._tx() as con:
             envio = EnvioDAO(con).obtener_por_id(id_envio)
             if envio is None:
@@ -439,6 +465,7 @@ class LaboratorioServicio(ServicioBase):
     def registrar_resultado(self, id_muestra, resultado, observaciones="",
                             fecha_resultado: datetime | None = None) -> int:
         contenido = requerir_texto(resultado, "Resultado")
+        fecha_resultado = self._fecha_realizada(fecha_resultado, "Fecha del resultado")
         with self._tx() as con:
             muestra = MuestraBiologicaDAO(con).obtener_por_id(id_muestra)
             if muestra is None:
@@ -449,10 +476,10 @@ class LaboratorioServicio(ServicioBase):
             if estado != "RECIBIDA":
                 raise ErrorNegocio(f"La muestra está {estado}; debe estar RECIBIDA para analizarse.")
             res = ResultadoAnalisis(self._siguiente_id(con, "resultado_analisis"), muestra,
-                                    fecha_resultado or ahora(), contenido,
+                                    fecha_resultado, contenido,
                                     (observaciones or "").strip())
             if not res.registrar_resultado():
-                raise ErrorNegocio("No se pudo registrar el resultado (revise la fecha).")
+                raise ErrorNegocio("No se pudo registrar el resultado (revise la fecha).", "Fecha del resultado")
             ResultadoAnalisisDAO(con).guardar_resultado(res)
             self._actualizar_orden_de(con, id_muestra)
             return res.id_resultado

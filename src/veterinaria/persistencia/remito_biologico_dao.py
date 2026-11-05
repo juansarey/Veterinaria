@@ -68,6 +68,14 @@ class RemitoBiologicoDAO:
             filas = cursor.fetchall()
         return [self._desde_fila(fila) for fila in filas]
 
+    def existe_por_clinica(self, id_clinica: int) -> bool:
+        with closing(self._conexion.cursor()) as cursor:
+            cursor.execute(
+                "SELECT 1 FROM remito_biologico WHERE id_clinica_origen = ? LIMIT 1",
+                (id_clinica,),
+            )
+            return cursor.fetchone() is not None
+
     def actualizar(self, remito: RemitoBiologico) -> bool:
         fecha = remito.fecha_emision
         with closing(self._conexion.cursor()) as cursor:

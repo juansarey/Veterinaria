@@ -916,11 +916,11 @@ SQLite, el DBML, el PUML, las estrategias y `AGENTS.md` permanecen sin cambios.
   vigente desde su aplicación hasta antes de `fecha_proxima_dosis`, y vencida en
   esa fecha o después. Si no tiene próxima dosis, permanece vigente desde su
   aplicación sin vencimiento definido.
-- `Mascota.registrar_atencion(atencion, vacunas)` usa
-  `atencion.fecha_hora.date()` como fecha de referencia. Requiere una historia
-  clínica y todas las vacunas obligatorias al día. Si la validación falla, devuelve
-  `False` sin modificar la historia; si pasa, delega el agregado en
-  `HistoriaClinica._agregar_atencion()`.
+- `Mascota.registrar_atencion(atencion, vacunas)` requiere una historia clínica y delega el
+  agregado en `HistoriaClinica._agregar_atencion()`, que impide repetir la misma instancia.
+  Las vacunas pendientes no impiden registrar consultas, controles ni urgencias. La firma y
+  el retorno booleano se conservan. El control informativo utiliza `vacunas_pendientes()` del
+  servicio y `atencion.fecha_hora.date()` como referencia, con las reglas de vigencia anteriores.
 
 ## Órdenes, muestras y trazabilidad
 
@@ -1012,6 +1012,11 @@ El flujo del remito termina definitivamente en `RECIBIDO`, que es final.
   `Mascota.obtener_vacunas_pendientes()` y relaciona cada pendiente con su mascota,
   responsable y fecha de referencia. No vuelve a implementar las reglas de
   obligatoriedad, especie, vigencia o vencimiento.
+  La vista previa y las exportaciones PDF/CSV muestran las columnas **ID mascota**, **Mascota**,
+  **Especie**, **Responsable** y **Vacuna pendiente**. El identificador es el `id_mascota` real de
+  SQLite, ya incluido por la estrategia, y se repite por cada vacuna pendiente de esa mascota.
+  Esto distingue mascotas diferentes con nombre, especie y responsable coincidentes, sin cambiar
+  el cálculo según la fecha de referencia ni los otros tres reportes.
 - `ReporteTiemposTransitoProcesamiento(envios)` devuelve un resumen con cantidad y
   promedio de envíos con tránsito completo, calculado como llegada menos salida, y
   cantidad y promedio de muestras procesadas, calculado entre los registros
@@ -1073,21 +1078,24 @@ muestra; *Empaquetar y precintar* genera el remito, empaqueta las muestras y col
 (con un código automático si no se ingresa uno); *Registrar recepción* anota la llegada y
 verifica el precinto. Las fechas se escriben sólo con números (las barras se agregan solas) o se eligen en un
 calendario desplegable (con selector de hora cuando el campo incluye la hora), los selectores
-admiten búsqueda por escritura, los estados se muestran con etiquetas de color y los cuadros
-de formulario ocupan todo el ancho y quedan fijos, y el listado ocupa el resto de la pantalla con su propia
-barra de desplazamiento: al crecer, sólo se mueve la tabla y no toda la pantalla (la pestaña
-«Veterinarios y agendas», que reúne tres listados, se desplaza completa). El diseño está pensado para
-ventanas grandes (pantalla completa).
+admiten búsqueda por escritura y los estados se muestran con texto y color. Cada pestaña tiene un
+único desplazamiento vertical que incluye formularios, acciones, muestras y todas las filas de sus
+tablas. Las tablas conservan únicamente su desplazamiento horizontal. La navegación lateral, los
+títulos de sección y la barra de pestañas permanecen fuera del área desplazable. Despacho y recepción
+se apilan cuando el ancho disponible no permite dos columnas. La rueda del mouse, la legibilidad y
+el acceso al contenido inferior con distintos tamaños y escalas requieren comprobación manual en
+la ventana real de Flet.
 
 ### Recorrido sugerido para la demostración
 
 1. **Clientes y mascotas** → alta de una mascota sin responsable: no se guarda (RN01).
 2. **Turnos** → reservar dos turnos que se pisen: el segundo se rechaza; uno fuera de horario también.
-3. **Atención** → registrar una atención de *Toby* o *Mora*: se bloquea por vacunas obligatorias
-   pendientes; aplicarlas en **Vacunas** y volver a intentar. Derivar la atención a laboratorio.
+3. **Atención** → seleccionar *Toby* o *Mora* y la fecha de atención: se advierten sus vacunas
+   obligatorias pendientes, pero se permite registrar. Las aplicaciones se registran por separado
+   en **Vacunas**. Derivar la atención a laboratorio normalmente.
 4. **Laboratorio › Empaquetado** → elegir la clínica, la conservadora y las muestras: se emite el remito y el precinto.
-5. **Envío y recepción** → despachar; recibir con el precinto íntegro (muestras *Recibida*) o
-   destildado (muestras *Rechazada*).
+5. **Envío y recepción** → despachar; elegir explícitamente **Precinto intacto** (muestras *Recibida*)
+   o **Precinto roto** (muestras *Rechazada*) antes de registrar la recepción.
 6. **Resultados** → cargar el resultado de una muestra recibida; una rechazada no puede analizarse.
 7. Al registrar el resultado se emite el **comprobante de resultados** en PDF (se puede volver a emitir desde la
    tabla de resultados). **Seguimiento** → línea de tiempo inmutable de cada muestra. **Atención** →
@@ -1103,9 +1111,9 @@ DAO, y hace `commit`; ante cualquier error hace `rollback`. Las acciones en un p
 nada a medias. Las violaciones de reglas se informan como `ErrorNegocio` con un mensaje legible y
 los errores de integridad de SQLite (DNI o matrícula repetidos, claves foráneas) se traducen al
 mismo tipo. Los IDs explícitos que exigen los DAO los genera el servicio (`MAX(id) + 1`). La capa no
-agrega reglas nuevas: usa `Veterinario.agregar_turno()`, `Mascota.registrar_atencion()`,
+modifica las reglas del dominio: usa `Veterinario.agregar_turno()`, `Mascota.registrar_atencion()`,
 `RemitoBiologico`, `Envio`, `Recepcion`, `ResultadoAnalisis` y las estrategias existentes; sólo suma
-mensajes que explican por qué una operación fue rechazada. `servicios/datos_demo.py` crea los datos
+validaciones de entrada y mensajes que explican por qué una operación fue rechazada. `servicios/datos_demo.py` crea los datos
 de demostración a través de esos mismos servicios.
 
 Los cuatro reportes se generan con `GeneradorReportes` y las estrategias existentes; el servicio sólo
@@ -1114,11 +1122,183 @@ como separador y UTF-8 con BOM para abrirse bien en Excel.
 
 El comprobante de resultados es un PDF que se genera a pedido con los datos ya persistidos
 (muestra, estudio, mascota, responsable, clínica, remito y precinto, fechas y resultado): no agrega
-entidades ni tablas. Registrar una mascota repetida (mismo responsable, nombre y especie) se
-rechaza, y una mascota sin atenciones puede eliminarse junto con su historia vacía.
+entidades ni tablas. Un responsable puede tener varias mascotas con el mismo nombre y especie:
+cada una se identifica por `id_mascota`, conserva su propia historia y se distingue con `[#ID]`
+en los selectores cuando las etiquetas coinciden. Una mascota sin atenciones puede eliminarse
+junto con su historia vacía.
 
-No se modificaron el dominio, los DAO, las estrategias, el DER ni el UML. La facturación y el
-resto de los procesos opcionales siguen fuera del alcance.
+### Validaciones generales de entrada (Etapa 1)
+
+Los servicios validan altas y modificaciones aunque se invoquen sin Flet:
+
+- Nombres y apellidos de personas: letras Unicode, acentos, ñ, espacios, guiones y apóstrofes;
+  máximo 80 caracteres, sin números. Se normaliza Unicode a NFC y se recortan espacios sobrantes.
+- DNI: cadena de 3 a 8 dígitos ASCII, sin puntos ni espacios internos. Conserva los ceros iniciales
+  y la unicidad existente; editar el propio DNI sin cambiarlo está permitido.
+- Teléfono y correo: opcionales. El teléfono admite números y separadores habituales (máximo 30);
+  el correo se comprueba como `usuario@dominio`, sin espacios (máximo 120), sin consultas de red.
+- Los textos cortos respetan sus límites declarados: mascota/raza 80, especie 50, sexo 20,
+  clínica 100, dirección 200, matrícula 30, especialidad/vacuna 100, motivos/estudios 200,
+  tipo de muestra 80 y códigos de conservadora/precinto 50. Los textos clínicos libres mantienen
+  su contenido y no reciben la restricción de nombres de personas.
+
+Flet muestra el error junto al campo y conserva los valores ante un rechazo. Desde la Etapa 4,
+reintentar o editar otro campo no borra el error: se retira al revalidar correctamente la entrada
+modificada o tras guardar con éxito. Se reutilizan los validadores existentes, sin bloquear la
+escritura incompleta ni validar campos nuevos antes del primer rechazo.
+En Flet 1.0.5 se usa `TextField.error` y `Dropdown.error_text`, y se solicita foco cuando la página
+lo permite. Los errores generales siguen mostrándose como avisos.
+
+Estas validaciones no reescriben ni bloquean la consulta de registros históricos. La Etapa 1 no
+incorpora restricciones de fechas ni nuevas bajas de veterinarios o clínicas.
+
+### Fechas y coherencia de los formularios (Etapa 2)
+
+- Al crear o modificar una mascota, el servicio acepta nacimiento vacío, hoy o una fecha pasada;
+  rechaza fechas futuras. Los registros históricos siguen consultándose sin modificaciones.
+- Al reservar un turno nuevo, el servicio rechaza fechas y horas anteriores al minuto actual del
+  reloj local: durante las 10:30 se permite reservar a las 10:30. Se conservan las reglas de duración,
+  agenda, superposición y turnos consecutivos. Consultar turnos históricos o cambiar su estado no
+  aplica esta restricción de creación. «Marcar atendido» sólo se ofrece para `CONFIRMADO`.
+- Refrescar listados, cambiar selectores o navegar no sobrescribe fechas ingresadas. Los errores
+  conservan los datos y se muestran junto al campo. Tras guardar correctamente una atención,
+  empaquetado, despacho, recepción o resultado, su fecha vuelve al momento actual para la siguiente
+  operación; un rechazo no la restablece. Reservas, filtros y fechas de vacunación conservan la
+  selección, incluso después de guardar.
+- El calendario de nacimiento permite fechas hasta hoy y el de reservas desde hoy; sus límites se
+  recalculan al abrirlos. Si el valor escrito está fuera del rango, sólo se ajusta la selección
+  inicial del calendario, sin cambiar el texto hasta que el usuario elija una fecha. Las consultas
+  históricas y los demás campos no reciben estas restricciones.
+- El aviso de vacunas de una atención utiliza su fecha seleccionada y se actualiza al escribir,
+  elegir calendario u hora y cambiar de mascota. Una fecha incompleta pide completarla, sin consultar
+  vacunas con otra fecha. La comprobación sigue delegada al servicio existente.
+- El responsable se selecciona al dar de alta una mascota. Durante la edición se muestra
+  deshabilitado, con una explicación; no puede cambiarse desde ese formulario.
+
+### Eliminación segura de veterinarios y clínicas (Etapa 3)
+
+En **Turnos → Veterinarios y agendas**, cada fila de veterinarios y clínicas ofrece Eliminar.
+La confirmación identifica la entidad y advierte que la baja del veterinario también quitará
+su agenda semanal, si la tiene. Cancelar no modifica datos; una confirmación sólo se procesa
+una vez y no puede abrirse otra mientras está pendiente.
+
+- Un veterinario sin turnos ni atenciones puede eliminarse. Si tiene agenda, se eliminan
+  explícitamente sus días, la agenda y luego el veterinario, en una sola transacción.
+- Cualquier turno, incluso cancelado o atendido, y cualquier atención clínica impiden su baja.
+- Una clínica sólo puede eliminarse si no tiene veterinarios ni remitos biológicos de ningún
+  estado. Esto preserva también envíos pendientes, en tránsito o entregados, recepciones,
+  muestras, resultados e historial de laboratorio.
+- Las comprobaciones y los borrados comparten una conexión y una transacción gestionada por
+  `ServicioBase._tx()`. Estas dos bajas inician la transacción antes de consultar dependencias,
+  si todavía no está abierta. Se conservan las FK activas y se revierte todo ante cualquier fallo.
+- El éxito se informa después del commit. Se actualizan tablas y selectores relacionados,
+  retirando los IDs eliminados sin restablecer fechas ni textos de otros formularios. Al borrar
+  al profesional seleccionado para editar su agenda, se retiran sus días y horarios del formulario.
+
+Los DAO conservan sus borrados existentes y sólo agregan consultas booleanas parametrizadas
+para detectar atenciones por veterinario y remitos por clínica. No se incorporan cascadas ni
+bajas lógicas. No se modificaron el dominio, State, Strategy, el esquema SQLite, el DER ni el UML.
+La facturación y el resto de los procesos opcionales siguen fuera del alcance.
+
+### Usabilidad del frontend (Etapa 4)
+
+- La recepción usa un desplegable obligatorio, inicialmente sin selección, con **Precinto intacto**
+  y **Precinto roto**. La interfaz valida antes de llamar al servicio y traduce explícitamente las
+  opciones a `True` y `False`. Un rechazo conserva selección y datos; sólo una recepción exitosa
+  restablece la selección a vacío. Se mantienen las transiciones y el historial existentes.
+- Diagnóstico y observaciones de atención, derivación, despacho, recepción y resultado son
+  multilínea. La altura visible está acotada a cuatro líneas, sin limitar la cantidad de texto.
+  Se conservan caracteres especiales y saltos internos en SQLite y comprobantes. El escape seguro
+  de ReportLab no cambia.
+- Clientes y mascotas distinguen **Guardar** de **Guardar cambios**. Reportes ofrece **Generar
+  reporte**. Resultados usa **Registrar resultado y generar PDF**, con explicación y botón
+  deshabilitado si la muestra no está recibida, incluidas las rechazadas.
+- Los botones e iconos comparten una protección no bloqueante por pestaña. Durante el manejador
+  completo se deshabilita visualmente el formulario y se rechazan llamadas simultáneas, incluso
+  desde otro botón. El bloqueo se libera en `finally`, conservando el estado propio de cada botón.
+  Las llamadas internas de generación y exportación siguen permitidas. Las eliminaciones conservan
+  su confirmación única y muestran el botón destructivo en rojo.
+- Los avisos tienen cierre; los errores permanecen diez segundos y los éxitos 4,5 segundos.
+  Las excepciones técnicas se conservan en consola; la pantalla informa un mensaje comprensible.
+  Si sólo falla el refresco después de guardar, se informa que la operación ya se completó.
+- Registrar un resultado y generar su PDF siguen siendo operaciones independientes. Si falla el
+  PDF, el aviso indica que el resultado permanece guardado y puede reemitirse desde la tabla,
+  sin sugerir repetir el registro ni mostrar éxito de exportación.
+
+La Etapa 4 modifica presentación, pruebas y documentación; conserva los servicios, transacciones,
+DAO, dominio, State, Strategy, esquema, DER y UML. Las comprobaciones automatizadas usan una página
+Flet simulada: queda pendiente la prueba manual integral de la ventana real, incluidos navegación
+por teclado, foco, desplazamiento, tamaños y escalado. No se certifica visualmente la distribución.
+
+### Política informativa de vacunación obligatoria
+
+«Controlar esquema de vacunas obligatorias al registrar atenciones» se implementa como una
+advertencia, sin exigir un esquema completo para atender. Se permiten **CONSULTA**, **CONTROL** y
+**URGENCIA** aunque existan vacunas faltantes, vencidas o aplicadas después de la fecha de atención.
+
+Flet consulta `AtencionServicio.vacunas_pendientes()` al cambiar mascota, fecha, calendario o reloj
+y vuelve a consultar antes de guardar. El aviso ámbar indica la fecha evaluada, enumera las vacunas
+pendientes y aclara que la atención puede registrarse. Un esquema completo muestra «Vacunas
+obligatorias al día»; una fecha incompleta mantiene un mensaje neutral. No se duplican en Flet las
+reglas de especie, obligatoriedad o vigencia, ni se usa la fecha actual para evaluar una atención
+histórica. Tras guardar, la fecha del formulario vuelve al momento actual para la operación siguiente
+y el aviso pasa a corresponder a esa nueva fecha, sin cambiar los datos de la atención registrada.
+
+Se mantienen las validaciones de mascota, historia clínica, veterinario y motivo, la transacción y
+la persistencia existentes. Registrar una atención no crea aplicaciones de vacunas ni elimina sus
+pendientes del reporte. Las observaciones profesionales conservan su tratamiento actual: no se
+insertan anotaciones automáticas ni registros adicionales sobre vacunación. El aviso es visual y
+no constituye una fotografía histórica inmutable del esquema al registrar la atención.
+
+La corrección retira únicamente el rechazo en `Mascota.registrar_atencion()` y su traducción a error
+en el servicio. No cambia el cálculo de pendientes ni las reglas de vigencia; tampoco DAO, esquema
+SQLite, DER, State o Strategy. La nota de `Mascota` del UML se actualizó y su SVG se regeneró con
+PlantUML 1.2024.3, sin cambiar clases ni relaciones.
+
+### Desplazamiento único del contenido
+
+Las cuatro pestañas de Laboratorio (Empaquetado, Envío y recepción, Resultados y Seguimiento), y las
+demás páginas, comparten una columna principal con desplazamiento vertical. Los listados no tienen
+altura máxima ni scroll vertical independiente: todas sus filas forman parte del flujo de la página.
+El panel de muestras extraídas tampoco limita su altura. Los marcos de tablas usan sólo una fila
+con scroll horizontal para mantener accesibles las columnas anchas.
+
+Se retiraron las expansiones verticales de listados y tarjetas dentro de ese flujo, conservando la
+altura disponible del contenedor de pestañas. En Vacunas se mantienen las dos columnas, con altura
+natural y alineación superior. Los diálogos conservan su propio desplazamiento cuando corresponde,
+fuera del contenido principal. Cambiar de pestaña o sección mantiene los controles y valores; en
+Empaquetado se conservan también las muestras desmarcadas aunque no quede ninguna seleccionada.
+No cambian servicios, reglas de negocio, persistencia, acciones ni exportaciones.
+
+La jerarquía se comprueba con Flet 1.0.5 y una página simulada. Queda pendiente confirmar en la
+ventana real el comportamiento de la rueda, las barras horizontales y el alcance de todos los
+botones al final de la página; las pruebas automatizadas no certifican esa interacción visual.
+
+### Fechas de operaciones de laboratorio realizadas
+
+`LaboratorioServicio` rechaza fechas futuras al emitir órdenes o remitos y al registrar extracción,
+empaquetado, despacho, llegada, recepción y resultado. El límite se aplica tanto a las operaciones
+individuales como a `derivar`, `empaquetar` y `recibir_remito`, antes de abrir la transacción o cambiar
+estados. Se reutiliza `servicios.base.ahora()` con precisión de minutos, igual que los campos de Flet:
+el minuto actual está permitido y el minuto siguiente se rechaza. La fecha ingresada se conserva,
+sin redondear ni reescribir los segundos que pueda recibir la API.
+
+Las reglas cronológicas existentes siguen vigentes: una operación no puede ser anterior al último
+acontecimiento correspondiente. Toda escritura de las operaciones combinadas mantiene la transacción
+actual y el rollback completo ante errores, incluidos llegada, precinto y recepción.
+
+En Flet, los calendarios de empaquetado, salida, recepción y resultado limitan dinámicamente el día
+máximo a hoy. La hora del día actual se valida definitivamente en servicios. Los errores se asocian
+al campo de fecha, conservando valores, observaciones y selección de precinto para corregir y
+reintentar. La extracción desde la interfaz utiliza el reloj del servicio, sin agregar otro formulario.
+
+El límite sólo afecta registros nuevos. No se alteran ni eliminan cadenas de custodia existentes,
+aunque contengan fechas futuras; DAO, consultas, historiales, comprobantes y reportes siguen leyendo
+esos datos. Una operación nueva debe respetar simultáneamente el límite actual y la secuencia previa.
+No se modifican dominio, State, Strategy, esquema SQLite, DER ni UML.
+
+Las reservas de turnos futuros, las próximas dosis de vacunas y las fechas de referencia futuras de
+reportes conservan su comportamiento; no reciben este límite de acontecimientos realizados.
 
 ## Pruebas
 
@@ -1128,7 +1308,56 @@ Desde la raíz del repositorio, con Python y pytest disponibles:
 python -m pytest -p no:cacheprovider
 ```
 
-La suite completa contiene actualmente 775 casos y finaliza sin fallos.
+La suite completa contiene actualmente 1170 casos y finaliza sin fallos.
+
+La Etapa 2 agrega 57 regresiones con reloj controlado y SQLite temporal para límites temporales,
+lectura histórica, calendarios, conservación y reinicio de fechas, avisos de vacunas, estados de
+turnos y responsable de mascota. Tres pruebas anteriores adaptan su reloj para conservar las
+verificaciones funcionales con fechas fijas.
+
+La Etapa 3 agrega 46 regresiones de servicio e interfaz con SQLite temporal: bajas permitidas
+y restringidas, agenda y días, consultas DAO, rollback ante fallos intermedios, protección por FK,
+persistencia al reabrir, confirmaciones repetidas o canceladas, actualización de selectores y
+conservación de formularios e historiales. No se cambian expectativas de las pruebas anteriores.
+
+La Etapa 4 agrega 43 casos en `tests/interfaz/test_usabilidad_flet.py`: precinto obligatorio,
+recepción aceptada/rechazada, conservación ante errores, textos multilínea y PDF, errores
+localizados, bloqueo concurrente, recuperación, estados de botones y N02. Se adaptan siete
+funciones de pruebas anteriores (ocho casos parametrizados) para exigir elección de precinto,
+comprobar mensajes sin detalles técnicos y verificar el desplazamiento de formularios largos;
+se conserva su cobertura funcional. Las bases y exportaciones son temporales y las pruebas
+de concurrencia se sincronizan con eventos, sin esperas arbitrarias.
+
+El cambio de política de vacunación agrega 28 casos: uno de dominio, 19 de servicio y ocho de
+interfaz, con fechas explícitas, SQLite y archivos temporales. Se actualizan ocho funciones de
+pruebas anteriores (diez casos parametrizados) que esperaban el rechazo por pendientes, conservando
+las comprobaciones de historia, aplicaciones, fechas, derivaciones y comprobantes. Los nuevos casos
+verifican los tres tipos de atención, vacunas completas/faltantes/vencidas/posteriores, especies y
+obligatoriedad, persistencia, rollback, texto profesional, ausencia de aplicaciones automáticas y
+continuidad de laboratorio y reportes.
+
+La corrección de desplazamiento agrega 14 casos en `tests/interfaz/test_scroll_contenido.py`:
+jerarquía de las once páginas y navegación de Laboratorio con 0, 1 y 35 registros completos,
+además de sus muestras extraídas pendientes. Se comprueban filas completas, scroll horizontal,
+ausencia de scrolls verticales anidados y alturas que recorten formularios, identidad de controles,
+valores, errores y selección de muestras al cambiar de pestaña y sección. Tres pruebas anteriores
+de distribución se adaptan al flujo vertical único, conservando verificaciones con tablas vacías,
+pocas y muchas filas.
+
+La validación de fechas realizadas agrega 68 casos con reloj controlado: 55 de servicio en
+`tests/servicios/test_fechas_realizadas_laboratorio.py` y 13 de interfaz en
+`tests/interfaz/test_fechas_laboratorio_flet.py`. Cubren los puntos de entrada individuales y
+combinados, pasado/minuto actual/futuro, cronología, rechazo antes de transacciones, rollback,
+calendarios, errores localizados y reintentos. Una base temporal reproduce una M-0008 con cadena
+futura y verifica su lectura sin cambios. Se ajusta el reloj de una prueba previa de textos
+multilínea para avanzar antes del transporte y se comparte el reloj de laboratorio en la fixture
+de fechas de Flet; se mantienen sus verificaciones anteriores.
+
+La columna **ID mascota** del reporte de vacunas pendientes agrega 12 regresiones en
+`tests/interfaz/test_id_reporte_vacunas.py`, con SQLite y archivos temporales: dos Rocky del mismo
+responsable, varias vacunas por ID, lectura tras reabrir, fechas de aplicación/vencimiento,
+vista previa, generación real de PDF/CSV y exportación desde Flet. También se comprueba que los
+otros tres reportes conservan sus columnas. No se modifican expectativas de pruebas anteriores.
 
 `pytest.ini` permite resolver los imports desde `src`. Los tests cubren disponibilidad
 semanal, límites horarios, superposición, cancelaciones, estados de turnos, registro

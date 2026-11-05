@@ -46,22 +46,24 @@ def test_registra_atencion_con_vacunas_obligatorias_al_dia(mascota, vacuna):
     assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
 
 
-def test_rechaza_atencion_si_falta_vacuna_obligatoria(mascota, vacuna):
+def test_registra_atencion_aunque_falte_vacuna_obligatoria(mascota, vacuna):
     atencion = crear_atencion()
 
-    assert mascota.registrar_atencion(atencion, [vacuna]) is False
-    assert mascota.obtener_historia_clinica().obtener_atenciones() == []
+    assert mascota.registrar_atencion(atencion, [vacuna]) is True
+    assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
+    assert mascota.obtener_vacunas_pendientes([vacuna], atencion.fecha_hora.date()) == [vacuna]
 
 
-def test_rechaza_atencion_si_vacuna_obligatoria_esta_vencida(mascota, vacuna):
+def test_registra_atencion_aunque_vacuna_obligatoria_este_vencida(mascota, vacuna):
     aplicacion = AplicacionVacuna(
         1, vacuna, date(2025, 1, 1), date(2026, 1, 1)
     )
     atencion = crear_atencion()
     mascota.agregar_aplicacion_vacuna(aplicacion)
 
-    assert mascota.registrar_atencion(atencion, [vacuna]) is False
-    assert mascota.obtener_historia_clinica().obtener_atenciones() == []
+    assert mascota.registrar_atencion(atencion, [vacuna]) is True
+    assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
+    assert mascota.obtener_vacunas_pendientes([vacuna], atencion.fecha_hora.date()) == [vacuna]
 
 
 def test_rechaza_atencion_si_no_existe_historia_clinica(vacuna):
@@ -79,8 +81,16 @@ def test_atencion_repetida_devuelve_false(mascota):
     assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
 
 
+def test_atencion_con_pendientes_repetida_no_se_agrega_dos_veces(mascota, vacuna):
+    atencion = crear_atencion()
+    assert mascota.registrar_atencion(atencion, [vacuna]) is True
+    assert mascota.registrar_atencion(atencion, [vacuna]) is False
+    assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
+    assert mascota.obtener_vacunas_pendientes([vacuna], atencion.fecha_hora.date()) == [vacuna]
+
+
 @pytest.mark.parametrize("motivo", ["faltante", "vencida"])
-def test_rechazo_no_modifica_historia(mascota, vacuna, motivo):
+def test_pendientes_permiten_agregar_atencion_y_conservan_historia_anterior(mascota, vacuna, motivo):
     anterior = crear_atencion(1, datetime(2026, 10, 11, 9))
     mascota.registrar_atencion(anterior, [])
 
@@ -90,18 +100,20 @@ def test_rechazo_no_modifica_historia(mascota, vacuna, motivo):
         )
         mascota.agregar_aplicacion_vacuna(aplicacion)
 
-    rechazada = crear_atencion(2)
-    assert mascota.registrar_atencion(rechazada, [vacuna]) is False
-    assert mascota.obtener_historia_clinica().obtener_atenciones() == [anterior]
+    nueva = crear_atencion(2)
+    assert mascota.registrar_atencion(nueva, [vacuna]) is True
+    assert mascota.obtener_historia_clinica().obtener_atenciones() == [anterior, nueva]
+    assert mascota.obtener_vacunas_pendientes([vacuna], nueva.fecha_hora.date()) == [vacuna]
 
 
-def test_aplicacion_posterior_no_valida_fecha_de_atencion(mascota, vacuna):
+def test_aplicacion_posterior_sigue_pendiente_pero_permite_atencion(mascota, vacuna):
     aplicacion = AplicacionVacuna(1, vacuna, date(2026, 10, 13))
     atencion = crear_atencion(fecha=datetime(2026, 10, 12, 9))
     mascota.agregar_aplicacion_vacuna(aplicacion)
 
-    assert mascota.registrar_atencion(atencion, [vacuna]) is False
-    assert mascota.obtener_historia_clinica().obtener_atenciones() == []
+    assert mascota.registrar_atencion(atencion, [vacuna]) is True
+    assert mascota.obtener_historia_clinica().obtener_atenciones() == [atencion]
+    assert mascota.obtener_vacunas_pendientes([vacuna], atencion.fecha_hora.date()) == [vacuna]
 
 
 def test_evalua_vigencia_en_fecha_de_atencion(mascota, vacuna):

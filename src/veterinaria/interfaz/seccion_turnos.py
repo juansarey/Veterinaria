@@ -1,6 +1,6 @@
 """Turnos, veterinarios, clínicas y agenda médica."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import flet as ft
 
@@ -8,6 +8,7 @@ from veterinaria.dominio.clinica.agenda_medica import DiaSemana
 from veterinaria.interfaz import componentes as c
 from veterinaria.interfaz.pantalla import Pantalla, Seccion
 from veterinaria.servicios.errores import ErrorNegocio
+from veterinaria.servicios.base import validar_nombre_persona, validar_telefono, validar_texto
 
 
 class PestanaAgenda(Pantalla):
@@ -18,11 +19,11 @@ class PestanaAgenda(Pantalla):
     def construir(self):
         self.vet = c.selector("Veterinario", 300)
         self.mascota = c.selector("Mascota", 300)
-        self.fecha = c.campo_fecha("Fecha", 180, date.today())
+        self.fecha = c.campo_fecha("Fecha", 180, date.today(), fecha_minima=date.today)
         self.hora = c.campo_hora("Hora (HH:MM)", 150, "10:00")
         self.duracion = c.desplegable_fijo("Duración", ["15", "30", "45", "60"], "30", 110)
-        self.motivo = c.campo("Motivo", 260)
-        self.dia = c.campo_fecha("Ver día", 180, date.today(), on_submit=self._ver)
+        self.motivo = c.campo("Motivo", 260, validar=lambda t: validar_texto(t, "Motivo", 200))
+        self.dia = c.campo_fecha("Ver día", 180, date.today(), on_submit=self._ver, opcional=True)
         self.filtro_vet = c.selector("Filtrar veterinario", 280, self._ver)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         return c.pagina(
@@ -33,7 +34,7 @@ class PestanaAgenda(Pantalla):
                       encabezado="Nuevo turno"),
             c.tarjeta(c.fila(self.dia, self.filtro_vet, c.boton("Ver agenda", self._ver, ft.Icons.SEARCH, False),
                              c.boton("Ver todos", self._ver_todos, ft.Icons.LIST, False)),
-                      c.contenedor_tabla(self.tabla, expandir=True), encabezado="Agenda", expandir=True))
+                      c.contenedor_tabla(self.tabla), encabezado="Agenda"))
 
     def refrescar(self):
         vets = self.srv.clinica.listar_veterinarios()
@@ -54,11 +55,11 @@ class PestanaAgenda(Pantalla):
         filas = [t for t in turnos if (dia is None or t["fecha"] == dia) and (idv is None or t["id_veterinario"] == idv)]
         c.llenar_tabla(self.tabla, self.COLS, filas, lambda t: [
             c.boton_icono(ft.Icons.CHECK, "Confirmar", lambda e, t=t: self._cambiar(t, "confirmar"),
-                          visible=t["estado"] == "PENDIENTE"),
+                          visible=t["estado"] == "PENDIENTE", grupo=self),
             c.boton_icono(ft.Icons.DONE_ALL, "Marcar atendido", lambda e, t=t: self._cambiar(t, "atender"),
-                          ft.Colors.GREEN_600, visible=t["estado"] in ("PENDIENTE", "CONFIRMADO")),
+                          ft.Colors.GREEN_600, visible=t["estado"] == "CONFIRMADO", grupo=self),
             c.boton_icono(ft.Icons.EVENT_BUSY, "Cancelar turno", lambda e, t=t: self._cambiar(t, "cancelar"),
-                          ft.Colors.RED_400, visible=t["estado"] in ("PENDIENTE", "CONFIRMADO"))])
+                          ft.Colors.RED_400, visible=t["estado"] in ("PENDIENTE", "CONFIRMADO"), grupo=self)])
 
     def _ver(self, e=None):
         self.ejecutar(lambda: self._tabla(estricto=True))
@@ -70,14 +71,17 @@ class PestanaAgenda(Pantalla):
 
     def _reservar(self, e=None):
         def accion():
-            inicio = c.leer_fecha_hora(f"{self.fecha.value} {self.hora.value}", "Fecha y hora")
-            fin = inicio + timedelta(minutes=int(self.duracion.value or 30))
+            inicio = datetime.combine(c.leer_fecha(self.fecha.value, "Fecha"),
+                                      c.leer_hora(self.hora.value, "Hora"))
+            fin = inicio + timedelta(minutes=int(c.opcion_de(self.duracion)))
             self.srv.clinica.agendar_turno(c.requerir(self.vet, "un veterinario"),
                                            c.requerir(self.mascota, "una mascota"), inicio, fin,
                                            self.motivo.value)
             self.dia.value = self.dia.data = self.fecha.value      # muestra el día reservado
             self.motivo.value = ""
-        self.ejecutar(accion, "Turno reservado.")
+        self.ejecutar(accion, "Turno reservado.", {
+            "Veterinario": self.vet, "Mascota": self.mascota, "Fecha": self.fecha, "Hora": self.hora,
+            "Duración": self.duracion, "Motivo": self.motivo})
 
     def _cambiar(self, turno, accion):
         textos = {"confirmar": "confirmado", "cancelar": "cancelado (el horario queda libre)",
@@ -96,14 +100,19 @@ class PestanaProfesionales(Pantalla):
                       DiaSemana.DOMINGO: "Dom"}
 
     def construir(self):
-        self.cl_nombre, self.cl_dir, self.cl_tel = c.campo("Nombre", 220), c.campo("Dirección", 280), c.campo("Teléfono", 160)
+        self.cl_nombre = c.campo("Nombre", 220, validar=lambda t: validar_texto(t, "Nombre", 100, True))
+        self.cl_dir = c.campo("Dirección", 280, validar=lambda t: validar_texto(t, "Dirección", 200, True))
+        self.cl_tel = c.campo("Teléfono", 160, validar=validar_telefono, helper="Opcional")
         self.v_clinica = c.selector("Clínica", 260)
-        self.v_nombre, self.v_apellido = c.campo("Nombre", 180), c.campo("Apellido", 180)
-        self.v_mat, self.v_esp = c.campo("Matrícula", 140), c.campo("Especialidad", 200)
+        self.v_nombre = c.campo("Nombre", 180, validar=lambda t: validar_nombre_persona(t, "Nombre"))
+        self.v_apellido = c.campo("Apellido", 180, validar=lambda t: validar_nombre_persona(t, "Apellido"))
+        self.v_mat = c.campo("Matrícula", 140, validar=lambda t: validar_texto(t, "Matrícula", 30, True))
+        self.v_esp = c.campo("Especialidad", 200, validar=lambda t: validar_texto(t, "Especialidad", 100))
         self.vet_agenda = c.selector("Veterinario", 320, self._cargar_agenda)
         self.dias = {d: ft.Checkbox(label=t, value=False) for d, t in self.ETIQUETAS_DIAS.items()}
         self.desde, self.hasta = c.campo_hora("Desde (HH:MM)", 160, "08:00"), c.campo_hora("Hasta (HH:MM)", 160, "16:00")
-        self.t_cl, self.t_vet = c.crear_tabla(self.COLS_C), c.crear_tabla(self.COLS_V)
+        self.t_cl = c.crear_tabla(self.COLS_C, con_acciones=True)
+        self.t_vet = c.crear_tabla(self.COLS_V, con_acciones=True)
         return c.pagina(
             c.tarjeta(c.fila(self.cl_nombre, self.cl_dir, self.cl_tel),
                       c.boton("Registrar clínica", self._crear_clinica, ft.Icons.ADD),
@@ -122,20 +131,53 @@ class PestanaProfesionales(Pantalla):
         clinicas = self.srv.clinica.listar_clinicas()
         vets = self.srv.clinica.listar_veterinarios()
         c.cargar_selector(self.v_clinica, clinicas)
+        anterior = self.vet_agenda.value
         c.cargar_selector(self.vet_agenda, vets)
-        c.llenar_tabla(self.t_cl, self.COLS_C, clinicas)
-        c.llenar_tabla(self.t_vet, self.COLS_V, vets)
+        if anterior is not None and self.vet_agenda.value is None:
+            for check in self.dias.values():
+                check.value = False
+            self.desde.value, self.hasta.value = "08:00", "16:00"
+        c.llenar_tabla(self.t_cl, self.COLS_C, clinicas, lambda f: [
+            c.boton_icono(ft.Icons.DELETE_OUTLINE, "Eliminar clínica",
+                          lambda e, f=f: self._pedir_baja_clinica(f), ft.Colors.RED_400, grupo=self)])
+        c.llenar_tabla(self.t_vet, self.COLS_V, vets, lambda f: [
+            c.boton_icono(ft.Icons.DELETE_OUTLINE, "Eliminar veterinario",
+                          lambda e, f=f: self._pedir_baja_veterinario(f), ft.Colors.RED_400, grupo=self)])
+
+    def _pedir_baja_veterinario(self, fila):
+        c.confirmar(self.app,
+                    f"¿Eliminar a {fila['apellido']}, {fila['nombre']} "
+                    f"(matrícula {fila['matricula']}, ID #{fila['id']})? "
+                    "Si tiene agenda semanal, también se eliminarán sus días y horarios.",
+                    lambda: self._eliminar_profesional(
+                        lambda: self.srv.clinica.eliminar_veterinario(fila["id"]),
+                        "Veterinario eliminado."))
+
+    def _pedir_baja_clinica(self, fila):
+        c.confirmar(self.app, f"¿Eliminar la clínica {fila['nombre']} (ID #{fila['id']})?",
+                    lambda: self._eliminar_profesional(
+                        lambda: self.srv.clinica.eliminar_clinica(fila["id"]), "Clínica eliminada."))
+
+    def _eliminar_profesional(self, accion, mensaje):
+        if self.ejecutar(accion, mensaje):
+            self.app.refrescar_selectores_profesionales()
 
     def _crear_clinica(self, e=None):
         if self.ejecutar(lambda: self.srv.clinica.crear_clinica(
-                self.cl_nombre.value, self.cl_dir.value, self.cl_tel.value), "Clínica registrada."):
+                self.cl_nombre.value, self.cl_dir.value, self.cl_tel.value), "Clínica registrada.",
+                {"Nombre": self.cl_nombre, "Dirección": self.cl_dir, "Teléfono": self.cl_tel}):
             self.cl_nombre.value = self.cl_dir.value = self.cl_tel.value = ""
+            self.app.actualizar()
 
     def _crear_vet(self, e=None):
         if self.ejecutar(lambda: self.srv.clinica.crear_veterinario(
-                c.id_de(self.v_clinica), self.v_nombre.value, self.v_apellido.value, self.v_mat.value,
-                self.v_esp.value), "Veterinario registrado. Falta definir su agenda semanal."):
+                c.requerir(self.v_clinica, "la clínica del veterinario"), self.v_nombre.value,
+                self.v_apellido.value, self.v_mat.value, self.v_esp.value),
+                "Veterinario registrado. Falta definir su agenda semanal.",
+                {"Clínica": self.v_clinica, "Nombre": self.v_nombre, "Apellido": self.v_apellido,
+                 "Matrícula": self.v_mat, "Especialidad": self.v_esp}):
             self.v_nombre.value = self.v_apellido.value = self.v_mat.value = self.v_esp.value = ""
+            self.app.actualizar()
 
     def _cargar_agenda(self, e=None):
         idv = c.id_de(self.vet_agenda)

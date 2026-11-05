@@ -1,9 +1,12 @@
 """Clientes, mascotas e historias clínicas (procesos 1 y 2)."""
 
+from datetime import date
+
 import flet as ft
 
 from veterinaria.interfaz import componentes as c
 from veterinaria.interfaz.pantalla import Pantalla, Seccion
+from veterinaria.servicios.base import validar_dni, validar_email, validar_nombre_persona, validar_telefono, validar_texto
 
 
 class PestanaClientes(Pantalla):
@@ -14,18 +17,22 @@ class PestanaClientes(Pantalla):
     def construir(self):
         self.editando = None
         self.encabezado = ft.Text("Nuevo cliente", size=16, weight=ft.FontWeight.W_600)
-        self.nombre_f, self.apellido_f = c.campo("Nombre"), c.campo("Apellido")
-        self.dni_f, self.tel_f, self.email_f = c.campo("DNI", 160), c.campo("Teléfono", 180), c.campo("Email", 260)
+        self.nombre_f = c.campo("Nombre", validar=lambda t: validar_nombre_persona(t, "Nombre"), helper="Obligatorio")
+        self.apellido_f = c.campo("Apellido", validar=lambda t: validar_nombre_persona(t, "Apellido"), helper="Obligatorio")
+        self.dni_f = c.campo("DNI", 160, validar=validar_dni, helper="3 a 8 dígitos, sin puntos")
+        self.tel_f = c.campo("Teléfono", 180, validar=validar_telefono, helper="Opcional")
+        self.email_f = c.campo("Email", 260, validar=validar_email, helper="Opcional")
         self.btn_cancelar = c.boton("Cancelar edición", self._limpiar, ft.Icons.CLOSE, False)
         self.btn_cancelar.visible = False
+        self.btn_guardar = c.boton("Guardar", self._guardar, ft.Icons.SAVE)
         self.buscar = c.campo("Buscar por nombre, apellido o DNI", 340, on_change=self._al_buscar)
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
         self.datos = []
         return c.pagina(
             c.tarjeta(self.encabezado, c.fila(self.nombre_f, self.apellido_f, self.dni_f),
                       c.fila(self.tel_f, self.email_f),
-                      c.fila(c.boton("Guardar", self._guardar, ft.Icons.SAVE), self.btn_cancelar)),
-            ft.Row([self.buscar]), c.contenedor_tabla(self.tabla, expandir=True))
+                      c.fila(self.btn_guardar, self.btn_cancelar)),
+            ft.Row([self.buscar]), c.contenedor_tabla(self.tabla))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_clientes()
@@ -36,9 +43,9 @@ class PestanaClientes(Pantalla):
         filas = [d for d in self.datos if not texto or texto in
                  f"{d['nombre']} {d['apellido']} {d['dni']}".lower()]
         c.llenar_tabla(self.tabla, self.COLS, filas, lambda f: [
-            c.boton_icono(ft.Icons.EDIT, "Editar", lambda e, f=f: self._editar(f)),
+            c.boton_icono(ft.Icons.EDIT, "Editar", lambda e, f=f: self._editar(f), grupo=self),
             c.boton_icono(ft.Icons.DELETE_OUTLINE, "Eliminar", lambda e, f=f: self._pedir_baja(f),
-                          ft.Colors.RED_400)])
+                          ft.Colors.RED_400, grupo=self)])
 
     def _al_buscar(self, e=None):
         self._filtrar()
@@ -49,17 +56,23 @@ class PestanaClientes(Pantalla):
                 self.tel_f.value, self.email_f.value)
 
     def _guardar(self, e=None):
+        campos = {"Nombre": self.nombre_f, "Apellido": self.apellido_f, "DNI": self.dni_f,
+                  "Teléfono": self.tel_f, "Email": self.email_f}
         if self.editando is None:
-            ok = self.ejecutar(lambda: self.srv.clinica.crear_cliente(*self._valores()), "Cliente registrado.")
+            ok = self.ejecutar(lambda: self.srv.clinica.crear_cliente(*self._valores()),
+                               "Cliente registrado.", campos)
         else:
             ok = self.ejecutar(lambda: self.srv.clinica.modificar_cliente(self.editando, *self._valores()),
-                               "Cliente actualizado.")
+                               "Cliente actualizado.", campos)
         if ok:
             self._limpiar()
 
     def _editar(self, fila):
+        for control in (self.nombre_f, self.apellido_f, self.dni_f, self.tel_f, self.email_f):
+            c.establecer_error(control, None)
         self.editando = fila["id"]
         self.encabezado.value = f"Editando a {fila['apellido']}, {fila['nombre']}"
+        self.btn_guardar.content = "Guardar cambios"
         self.nombre_f.value, self.apellido_f.value, self.dni_f.value = fila["nombre"], fila["apellido"], fila["dni"]
         self.tel_f.value, self.email_f.value = fila["telefono"], fila["email"]
         self.btn_cancelar.visible = True
@@ -75,8 +88,10 @@ class PestanaClientes(Pantalla):
     def _limpiar(self, e=None):
         self.editando = None
         self.encabezado.value = "Nuevo cliente"
+        self.btn_guardar.content = "Guardar"
         for f in (self.nombre_f, self.apellido_f, self.dni_f, self.tel_f, self.email_f):
             f.value = ""
+            c.establecer_error(f, None)
         self.btn_cancelar.visible = False
         self.app.actualizar()
 
@@ -94,51 +109,62 @@ class PestanaMascotas(Pantalla):
         self.editando = None
         self.encabezado = ft.Text("Nueva mascota", size=16, weight=ft.FontWeight.W_600)
         self.resp = c.selector("Responsable (obligatorio)", 340)
-        self.nombre_f = c.campo("Nombre", 200)
+        self.nombre_f = c.campo("Nombre", 200, validar=lambda t: validar_texto(t, "Nombre", 80, True), helper="Obligatorio")
         self.especie = c.desplegable_fijo("Especie", c.ESPECIES, "Perro")
-        self.raza_f = c.campo("Raza", 200)
-        self.nac_f = c.campo_fecha("Nacimiento")
+        self.raza_f = c.campo("Raza", 200, validar=lambda t: validar_texto(t, "Raza", 80), helper="Opcional")
+        self.nac_f = c.campo_fecha("Nacimiento", fecha_minima=date.min, fecha_maxima=date.today, opcional=True)
+        self.nac_f.helper = "Opcional; hasta hoy"
         self.sexo = c.desplegable_fijo("Sexo", ["", "Macho", "Hembra"], "", 130)
         self.btn_cancelar = c.boton("Cancelar edición", self._limpiar, ft.Icons.CLOSE, False)
         self.btn_cancelar.visible = False
         self.tabla = c.crear_tabla(self.COLS, con_acciones=True)
+        self.btn_guardar = c.boton("Guardar", self._guardar, ft.Icons.SAVE)
         self.datos = []
         return c.pagina(
             c.tarjeta(self.encabezado, self.resp,
                       c.fila(self.nombre_f, self.especie, self.raza_f, self.nac_f, self.sexo),
                       c.nota("Al registrar una mascota se abre automáticamente su historia clínica."),
-                      c.fila(c.boton("Guardar", self._guardar, ft.Icons.SAVE), self.btn_cancelar)),
-            c.contenedor_tabla(self.tabla, expandir=True))
+                      c.fila(self.btn_guardar, self.btn_cancelar)),
+            c.contenedor_tabla(self.tabla))
 
     def refrescar(self):
         self.datos = self.srv.clinica.listar_mascotas()
         c.cargar_selector(self.resp, self.srv.clinica.listar_clientes())
         c.llenar_tabla(self.tabla, self.COLS, self.datos, lambda f: [
-            c.boton_icono(ft.Icons.MEDICAL_INFORMATION, "Historia clínica", lambda e, f=f: self._historia(f)),
-            c.boton_icono(ft.Icons.EDIT, "Editar", lambda e, f=f: self._editar(f)),
+            c.boton_icono(ft.Icons.MEDICAL_INFORMATION, "Historia clínica", lambda e, f=f: self._historia(f), grupo=self),
+            c.boton_icono(ft.Icons.EDIT, "Editar", lambda e, f=f: self._editar(f), grupo=self),
             c.boton_icono(ft.Icons.DELETE_OUTLINE, "Eliminar", lambda e, f=f: self._pedir_baja(f),
-                          ft.Colors.RED_400)])
+                          ft.Colors.RED_400, grupo=self)])
 
     def _guardar(self, e=None):
         nac = lambda: c.leer_fecha_opcional(self.nac_f.value, "Nacimiento")
+        campos = {"Nombre": self.nombre_f, "Especie": self.especie, "Raza": self.raza_f,
+                  "Sexo": self.sexo, "Nacimiento": self.nac_f, "Responsable": self.resp,
+                  self.resp.label: self.resp}
         if self.editando is None:
             ok = self.ejecutar(lambda: self.srv.clinica.crear_mascota(
-                c.id_de(self.resp), self.nombre_f.value, self.especie.value, self.raza_f.value, nac(),
-                self.sexo.value or "", abrir_historia=True), "Mascota registrada con su historia clínica.")
+                c.requerir(self.resp, "un responsable"), self.nombre_f.value,
+                c.opcion_de(self.especie), self.raza_f.value, nac(),
+                c.opcion_de(self.sexo), abrir_historia=True), "Mascota registrada con su historia clínica.", campos)
         else:
             ok = self.ejecutar(lambda: self.srv.clinica.modificar_mascota(
-                self.editando, self.nombre_f.value, self.especie.value, self.raza_f.value, nac(),
-                self.sexo.value or ""), "Mascota actualizada (el responsable no cambia).")
+                self.editando, self.nombre_f.value, c.opcion_de(self.especie), self.raza_f.value, nac(),
+                c.opcion_de(self.sexo)), "Mascota actualizada (el responsable no cambia).", campos)
         if ok:
             self._limpiar()
 
     def _editar(self, fila):
+        for control in (self.nombre_f, self.raza_f, self.nac_f, self.resp, self.especie, self.sexo):
+            c.establecer_error(control, None)
         self.editando = fila["id"]
         self.encabezado.value = f"Editando a {fila['nombre']}"
+        self.btn_guardar.content = "Guardar cambios"
         self.nombre_f.value, self.raza_f.value = fila["nombre"], fila["raza"]
         self.especie.value, self.sexo.value = fila["especie"], fila["sexo"] or ""
         self.nac_f.value = self.nac_f.data = fila["fecha_nacimiento"]
         self.resp.value = str(fila["id_responsable"])
+        self.resp.disabled = True
+        self.resp.helper_text = "El responsable no puede cambiarse desde este formulario."
         self.btn_cancelar.visible = True
         self.app.actualizar()
 
@@ -149,10 +175,15 @@ class PestanaMascotas(Pantalla):
     def _limpiar(self, e=None):
         self.editando = None
         self.encabezado.value = "Nueva mascota"
+        self.btn_guardar.content = "Guardar"
         for f in (self.nombre_f, self.raza_f, self.nac_f):
             f.value = ""
+        for control in (self.nombre_f, self.raza_f, self.nac_f, self.resp, self.especie, self.sexo):
+            c.establecer_error(control, None)
         self.nac_f.data = ""
         self.resp.value, self.especie.value, self.sexo.value = None, "Perro", ""
+        self.resp.disabled = False
+        self.resp.helper_text = None
         self.btn_cancelar.visible = False
         self.app.actualizar()
 

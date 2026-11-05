@@ -69,6 +69,14 @@ class AtencionDAO:
                 )
         return atenciones
 
+    def existe_por_veterinario(self, id_veterinario: int) -> bool:
+        with closing(self._conexion.cursor()) as cursor:
+            cursor.execute(
+                "SELECT 1 FROM atencion WHERE id_veterinario = ? LIMIT 1",
+                (id_veterinario,),
+            )
+            return cursor.fetchone() is not None
+
     def listar_por_historia(self, id_historia: int) -> list[Atencion]:
         with closing(self._conexion.cursor()) as cursor:
             cursor.execute("""

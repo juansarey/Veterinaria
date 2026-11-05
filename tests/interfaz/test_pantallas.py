@@ -91,16 +91,167 @@ def test_clientes_y_mascotas(ui):
     elegir(mas.resp); mas._guardar()
     assert "historia" in ultimo()
     assert app.servicios.atencion.obtener_historia(mas.datos[0]["id"]) is not None
-    mas.nombre_f.value = "firulais"; elegir(mas.resp); mas._guardar()       # mismo responsable y especie
-    assert "ya tiene registrada" in ultimo() and len(mas.datos) == 1
+    mas.nombre_f.value = "Firulais"; elegir(mas.resp); mas._guardar()      # mismo responsable y especie
+    assert "registrada" in ultimo() and len(mas.datos) == 2
+    assert len({m["id"] for m in mas.datos}) == 2
+    assert len({m["etiqueta"] for m in mas.datos}) == 2
     mas._historia(mas.datos[0]); assert any("Historia clínica" in d for d in pag.dialogos)
     mas._pedir_baja(mas.datos[0]); assert "Confirmar" in pag.dialogos
 
 
-def test_turnos_y_profesionales(ui):
+def test_error_de_campo_enfoca_conserva_valores_y_permite_corregir(ui, monkeypatch):
+    app, pag = ui
+    cli = pestana(app, sp.PestanaClientes)
+    focos = []
+    monkeypatch.setattr(pag, "run_task", lambda funcion: focos.append(funcion.__self__), raising=False)
+    cli.nombre_f.value, cli.apellido_f.value, cli.dni_f.value = "Ana2", "Pérez", "12a"
+    cli._guardar()
+    assert cli.nombre_f.error and "letras" in cli.nombre_f.error
+    assert focos[-1] is cli.nombre_f
+    assert (cli.nombre_f.value, cli.apellido_f.value, cli.dni_f.value) == ("Ana2", "Pérez", "12a")
+    assert app.servicios.clinica.listar_clientes() == []
+
+    cli.nombre_f.value = "María José"
+    cli.nombre_f.on_change(SimpleNamespace())
+    assert cli.nombre_f.error is None
+    cli._guardar()
+    assert cli.dni_f.error and focos[-1] is cli.dni_f
+    assert cli.nombre_f.value == "María José"
+    cli.dni_f.value = "00123456"
+    cli._guardar()
+    assert "registrado" in pag.mensajes[-1]
+    assert cli.nombre_f.error is cli.dni_f.error is None
+    assert cli.nombre_f.value == cli.dni_f.value == ""
+    assert app.servicios.clinica.listar_clientes()[0]["dni"] == "00123456"
+
+
+def test_correo_se_valida_al_guardar_sin_interferir_con_la_escritura(ui):
+    app, pag = ui
+    cli = pestana(app, sp.PestanaClientes)
+    cli.nombre_f.value, cli.apellido_f.value, cli.dni_f.value = "Ana", "Pérez", "12345678"
+    cli.email_f.value = "ana@"
+    cli.email_f.on_change(SimpleNamespace())
+    assert cli.email_f.value == "ana@" and cli.email_f.error is None
+    assert pag.mensajes == []
+    cli._guardar()
+    assert cli.email_f.error and cli.email_f.value == "ana@"
+    cli.email_f.value = "ana@correo.com"
+    cli.email_f.on_change(SimpleNamespace())
+    assert cli.email_f.error is None
+    cli._guardar()
+    assert app.servicios.clinica.listar_clientes()[0]["email"] == "ana@correo.com"
+
+
+def test_edicion_rechazada_preserva_formulario_y_datos_originales(ui):
+    app, _ = ui
+    cliente = app.servicios.clinica.crear_cliente("Ana", "Pérez", "12345678")
+    cli = pestana(app, sp.PestanaClientes)
+    cli.refrescar(); cli._editar(cli.datos[0])
+    cli.nombre_f.value, cli.tel_f.value = "Eva", "teléfono?"
+    cli._guardar()
+    assert cli.editando == cliente and cli.btn_cancelar.visible
+    assert cli.tel_f.error and cli.nombre_f.value == "Eva"
+    assert app.servicios.clinica.listar_clientes()[0]["nombre"] == "Ana"
+    cli.tel_f.value = "+54 (351) 555-0101"
+    cli._guardar()
+    assert cli.editando is None and cli.tel_f.error is None
+    assert app.servicios.clinica.listar_clientes()[0]["nombre"] == "Eva"
+
+
+def test_dni_duplicado_se_marca_en_el_campo(ui):
+    app, _ = ui
+    app.servicios.clinica.crear_cliente("Ana", "Pérez", "12345678")
+    cli = pestana(app, sp.PestanaClientes)
+    cli.nombre_f.value, cli.apellido_f.value, cli.dni_f.value = "Eva", "Ruiz", "12345678"
+    cli._guardar()
+    assert "Ya existe" in cli.dni_f.error
+    assert cli.nombre_f.value == "Eva" and len(app.servicios.clinica.listar_clientes()) == 1
+
+
+def test_selector_invalido_se_informa_y_se_recupera(ui):
+    app, pag = ui
+    app.servicios.clinica.crear_clinica("Vet & Cía. Nº 2", "Av. 9 de Julio 100")
+    prof = pestana(app, st.PestanaProfesionales)
+    prof.refrescar()
+    prof.v_clinica.value = "texto"
+    prof.v_nombre.value, prof.v_apellido.value, prof.v_mat.value = "Ana", "Pérez", "MP-2/26"
+    prof._crear_vet()
+    assert prof.v_clinica.error_text and prof.v_nombre.value == "Ana"
+    assert app.servicios.clinica.listar_veterinarios() == []
+    elegir(prof.v_clinica)
+    prof.v_clinica.on_select(SimpleNamespace())
+    assert prof.v_clinica.error_text is None
+    prof._crear_vet()
+    assert "Veterinario registrado" in pag.mensajes[-1]
+    assert prof.v_mat.value == ""
+
+
+def test_longitudes_se_muestran_en_los_formularios_correspondientes(ui):
+    app, _ = ui
+    prof = pestana(app, st.PestanaProfesionales)
+    prof.cl_nombre.value, prof.cl_dir.value = "Clínica 2", "D" * 201
+    prof._crear_clinica()
+    assert prof.cl_dir.error and prof.cl_nombre.value == "Clínica 2"
+    vacunas = pestana(app, sa.PestanaVacunas)
+    vacunas.v_nombre.value = "V" * 101
+    vacunas._crear_vacuna()
+    assert vacunas.v_nombre.error and vacunas.v_nombre.value == "V" * 101
+    emp = pestana(app, sl.PestanaEmpaquetado)
+    emp.codigo_cons.value = "C" * 51
+    emp._crear_cons()
+    assert emp.codigo_cons.error and emp.codigo_cons.value == "C" * 51
+
+
+def test_error_general_sigue_informandose_sin_marcar_campos(ui):
+    app, pag = ui
+    cli = pestana(app, sp.PestanaClientes)
+    cli.nombre_f.value = "Ana"
+
+    def rechazar():
+        raise ErrorNegocio("La operación no está disponible.")
+
+    assert cli.ejecutar(rechazar, campos={"Nombre": cli.nombre_f}) is None
+    assert pag.mensajes[-1] == "La operación no está disponible."
+    assert cli.nombre_f.error is None and cli.nombre_f.value == "Ana"
+
+
+def test_foco_no_disponible_no_oculta_el_error_de_validacion(ui, monkeypatch):
+    app, pag = ui
+    cli = pestana(app, sp.PestanaClientes)
+
+    def sin_sesion(*_):
+        raise RuntimeError("sin sesión de Flet")
+
+    monkeypatch.setattr(pag, "run_task", sin_sesion, raising=False)
+    cli._guardar()
+    assert cli.nombre_f.error and cli.nombre_f.value == ""
+    assert "obligatorio" in pag.mensajes[-1]
+
+
+def test_seleccion_de_mascotas_coincidentes_utiliza_el_id(ui):
+    app, _ = ui
+    srv = app.servicios
+    cliente = srv.clinica.crear_cliente("Ana", "Pérez", "00123456")
+    una = srv.clinica.crear_mascota(cliente, "Luna", "Gato", abrir_historia=True)
+    otra = srv.clinica.crear_mascota(cliente, "Luna", "Gato", abrir_historia=True)
+    clinica = srv.clinica.crear_clinica("Centro", "Colón 100")
+    srv.clinica.crear_veterinario(clinica, "Luis", "Gómez", "MP-1")
+    at = pestana(app, sa.PestanaAtenciones)
+    at.refrescar()
+    assert len({opcion.text for opcion in at.mascota.options}) == 2
+    at.mascota.value = str(otra)
+    elegir(at.vet)
+    at.motivo.value = "Control"
+    at._registrar()
+    assert srv.atencion.listar_atenciones(una) == []
+    assert len(srv.atencion.listar_atenciones(otra)) == 1
+
+
+def test_turnos_y_profesionales(ui, monkeypatch):
+    monkeypatch.setattr("veterinaria.servicios.clinica_servicio.ahora", lambda: datetime(2026, 11, 2, 6))
     app, pag = ui
     ultimo = lambda: pag.mensajes[-1]
-    app.servicios.clinica.crear_cliente("Ana", "Pérez", "1")
+    app.servicios.clinica.crear_cliente("Ana", "Pérez", "30111222")
     app.servicios.clinica.crear_mascota(1, "Firulais", "Perro")
     prof, ag = pestana(app, st.PestanaProfesionales), pestana(app, st.PestanaAgenda)
     prof.cl_nombre.value, prof.cl_dir.value = "Centro", "Colón 100"; prof._crear_clinica()
@@ -130,17 +281,20 @@ def test_atencion_derivacion_y_comprobante(ui, tmp_path):
     ultimo = lambda: pag.mensajes[-1]
     srv = app.servicios
     cl = srv.clinica.crear_clinica("Centro", "Colón"); vet = srv.clinica.crear_veterinario(cl, "Luis", "Gómez", "MP-1")
-    cli = srv.clinica.crear_cliente("Ana", "Pérez", "1")
+    cli = srv.clinica.crear_cliente("Ana", "Pérez", "30111222")
     mas = srv.clinica.crear_mascota(cli, "Firulais", "Perro", abrir_historia=True)
     at, va = pestana(app, sa.PestanaAtenciones), pestana(app, sa.PestanaVacunas)
 
     va.refrescar(); va.v_nombre.value = "Antirrábica"; va._crear_vacuna()
     at.refrescar(); elegir(at.mascota); at._al_elegir_mascota(); elegir(at.vet)
     assert "pendientes" in at.estado_vacunas.value
-    at.motivo.value = "Control"; at._registrar(); assert "Antirrábica" in ultimo()
+    at.motivo.value = "Control"; at._registrar(); assert "Atención registrada" in ultimo()
+    assert "Puede registrar la atención" in at.estado_vacunas.value
+    assert len(srv.atencion.listar_atenciones(mas)) == 1
     va.refrescar(); elegir(va.mascota); elegir(va.vacuna)
     va.f_prox.value = ""; va._aplicar(); assert "Aplicación registrada" in ultimo()
     at.refrescar(); at.motivo.value = "Control"; at._registrar(); assert "Atención registrada" in ultimo()
+    assert len(srv.atencion.listar_atenciones(mas)) == 2
 
     at.refrescar(); elegir(at.atencion)
     at.estudio.value = "Hemograma"; at._derivar(); assert "Orden #1" in ultimo()
@@ -154,7 +308,7 @@ def test_laboratorio_completo_con_rechazo(ui, tmp_path):
     ultimo = lambda: pag.mensajes[-1]
     srv = app.servicios
     cl = srv.clinica.crear_clinica("Centro", "Colón"); vet = srv.clinica.crear_veterinario(cl, "Luis", "Gómez", "MP-1")
-    cli = srv.clinica.crear_cliente("Ana", "Pérez", "1")
+    cli = srv.clinica.crear_cliente("Ana", "Pérez", "30111222")
     mas = srv.clinica.crear_mascota(cli, "Firulais", "Perro", abrir_historia=True)
     from datetime import datetime, timedelta
     at = srv.atencion.registrar_atencion(mas, vet, datetime.now() - timedelta(days=1),
@@ -170,7 +324,7 @@ def test_laboratorio_completo_con_rechazo(ui, tmp_path):
     emp._empaquetar(); assert "Remito R-0001 emitido" in pag.dialogos[-1]
 
     env.refrescar(); elegir(env.remito); env._despachar(); assert "En tránsito" in ultimo()
-    env.refrescar(); elegir(env.envio); env.integro.value = False; env._recibir()
+    env.refrescar(); elegir(env.envio); env.integro.value = "Precinto roto"; env._recibir()
     assert pag.dialogos[-1] == "Remito RECHAZADO"
 
     res.refrescar(); elegir(res.muestra); res.resultado.value = "x"; res._registrar()
@@ -237,7 +391,8 @@ def test_error_de_escritura_no_anuncia_exito_y_permite_reintento(
         parche.setattr(sr, nombre, sin_permisos)
         rp._exportar(formato)
     avisos_fallo = pag.mensajes[inicio_avisos:]
-    assert any("sin permisos" in aviso for aviso in avisos_fallo)
+    assert any("permisos" in aviso for aviso in avisos_fallo)
+    assert not any("sin permisos" in aviso for aviso in avisos_fallo)  # no exponer la excepción técnica
     assert not any("Reporte exportado" in aviso for aviso in avisos_fallo)
     assert archivos_abiertos == []
     assert rp.actual is not None and rp.tabla.visible
@@ -298,22 +453,23 @@ def test_todas_las_fechas_de_las_pantallas_tienen_calendario(ui):
     assert len(hallados) == 11 and all(f.suffix is not None for f in hallados)
 
 
-def test_las_tablas_tienen_barra_propia_con_alto_limitado():
+def test_las_tablas_crecen_con_filas_y_solo_tienen_scroll_horizontal():
     cols = [("a", "A")]
     tabla = c.crear_tabla(cols)
-    marco = c.contenedor_tabla(tabla, alto_max=300)
-    assert marco.content.scroll == ft.ScrollMode.ALWAYS
+    marco = c.contenedor_tabla(tabla)
+    assert isinstance(marco.content, ft.Row) and marco.content.scroll == ft.ScrollMode.AUTO
     c.llenar_tabla(tabla, cols, [{"a": i} for i in range(40)])
-    assert marco.height == 300                                          # sólo se mueve la tabla
+    assert marco.height is None and marco.expand in (None, False)
+    assert len(tabla.rows) == 40 and tabla.rows[-1].cells[0].content.value == "39"
     c.llenar_tabla(tabla, cols, [{"a": 1}, {"a": 2}])
-    assert marco.height < 300                                           # pocas filas: sin espacio vacío
+    assert marco.height is None and len(tabla.rows) == 2
 
 
 def test_comprobante_de_resultados_desde_la_interfaz(ui, tmp_path):
     app, pag = ui
     cargar_demo(app.servicios)
     env, res = pestana(app, sl.PestanaEnvio), pestana(app, sl.PestanaResultados)
-    env.refrescar(); env.envio.value = "3"; env._recibir()               # remito C llega íntegro
+    env.refrescar(); env.envio.value = "3"; env.integro.value = "Precinto intacto"; env._recibir()
     assert pag.dialogos[-1] == "Remito aceptado"
     res.refrescar(); res.muestra.value = "4"
     res.resultado.value, res.obs.value = "Sin hallazgos de importancia", "Control en 6 meses"
@@ -332,7 +488,7 @@ def test_resultado_permanece_guardado_si_falla_pdf_y_se_reemite(ui, tmp_path, mo
     app, pag = ui
     cargar_demo(app.servicios)
     env, res = pestana(app, sl.PestanaEnvio), pestana(app, sl.PestanaResultados)
-    env.refrescar(); env.envio.value = "3"; env._recibir()
+    env.refrescar(); env.envio.value = "3"; env.integro.value = "Precinto intacto"; env._recibir()
     res.refrescar(); res.muestra.value = "4"
     res.resultado.value, res.obs.value = "Sin hallazgos", "Revisar en 6 meses"
 
@@ -369,7 +525,7 @@ def _hijos(control):
 
 
 def _listados_expandidos(control):
-    """Marcos de tabla que ocupan el alto restante y tienen su propia barra."""
+    """Detecta los antiguos marcos con expansión y scroll vertical interno."""
     hallados = []
     if (isinstance(control, ft.Container) and control.expand is True
             and isinstance(control.content, ft.Column) and control.content.scroll == ft.ScrollMode.ALWAYS):
@@ -379,28 +535,23 @@ def _listados_expandidos(control):
     return hallados
 
 
-def test_formularios_fijos_y_solo_se_mueve_el_listado(ui):
+def test_formularios_y_listados_comparten_un_scroll_vertical(ui):
     app, _ = ui
-    fijas = [sp.PestanaClientes, sp.PestanaMascotas, st.PestanaAgenda, sa.PestanaAtenciones,
-             sa.PestanaVacunas, sl.PestanaEmpaquetado, sl.PestanaEnvio, sl.PestanaResultados,
-             sl.PestanaSeguimiento]
-    vistas = [(clase.__name__, pestana(app, clase).vista) for clase in fijas]
-    vistas.append(("Reportes", app.pantallas[4].vista))
+    vistas = [(h.nombre, h.vista) for seccion in app.pantallas
+              for h in getattr(seccion, "hijas", [seccion])]
     for nombre, vista in vistas:
-        assert vista.scroll is None, nombre                       # la pantalla no se desplaza
-        assert vista.horizontal_alignment == ft.CrossAxisAlignment.STRETCH, nombre   # cuadros a todo el ancho
-        assert _listados_expandidos(vista), nombre                # el listado ocupa el resto y tiene barra
-    assert len(_listados_expandidos(pestana(app, sa.PestanaVacunas).vista)) == 2     # dos listados
-    # la pestaña de veterinarios no entra completa en pantalla: se desplaza entera
-    assert pestana(app, st.PestanaProfesionales).vista.scroll == ft.ScrollMode.AUTO
+        assert vista.scroll == ft.ScrollMode.AUTO, nombre
+        assert vista.horizontal_alignment == ft.CrossAxisAlignment.STRETCH, nombre
+        assert not _listados_expandidos(vista), nombre
 
 
-def test_listado_expandido_no_fija_su_alto():
+def test_listado_vacio_no_reserva_altura_ni_espacio_expandido():
     cols = [("a", "A")]
     tabla = c.crear_tabla(cols)
-    marco = c.contenedor_tabla(tabla, expandir=True)
-    c.llenar_tabla(tabla, cols, [{"a": i} for i in range(3)])
-    assert marco.expand is True and marco.height is None
+    marco = c.contenedor_tabla(tabla)
+    c.llenar_tabla(tabla, cols, [])
+    assert marco.expand in (None, False) and marco.height is None
+    assert marco.content.controls == [tabla] and tabla.rows == []
 
 
 def test_vacunas_se_filtran_por_la_especie_de_la_mascota(ui):

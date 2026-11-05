@@ -594,9 +594,11 @@ se controlan las vacunas
 obligatorias correspondientes
 a su especie.
 
-Sin historia clínica
-o con vacunas pendientes,
+Sin historia clínica,
 la atención no se registra.
+Las vacunas pendientes
+generan una advertencia,
+sin impedir la atención.
 end note
 
 

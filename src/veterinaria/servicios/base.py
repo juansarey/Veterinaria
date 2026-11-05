@@ -1,6 +1,8 @@
 """Infraestructura común de los servicios: conexión, transacciones e IDs."""
 
 import sqlite3
+import re
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -101,10 +103,78 @@ def _traducir_integridad(exc: sqlite3.IntegrityError) -> str:
     return f"No se pudo guardar por una restricción de integridad: {texto}"
 
 
-def requerir_texto(valor, campo: str) -> str:
-    texto = (valor or "").strip()
+def validar_texto(valor, campo: str, maximo: int | None = None, obligatorio=False) -> str:
+    if valor is None:
+        valor = ""
+    if not isinstance(valor, str):
+        raise ErrorNegocio(f"El campo «{campo}» debe ser texto.", campo)
+    texto = valor.strip()
+    if obligatorio and not texto:
+        raise ErrorNegocio(f"El campo «{campo}» es obligatorio.", campo)
+    if maximo is not None and len(texto) > maximo:
+        raise ErrorNegocio(f"«{campo}» admite como máximo {maximo} caracteres.", campo)
+    return texto
+
+
+def requerir_texto(valor, campo: str, maximo: int | None = None) -> str:
+    return validar_texto(valor, campo, maximo, obligatorio=True)
+
+
+def validar_nombre_persona(valor, campo: str) -> str:
+    texto = unicodedata.normalize("NFC", requerir_texto(valor, campo))
+    texto = re.sub(" +", " ", texto)
+    validar_texto(texto, campo, 80)
+    letra_anterior = False
+    for caracter in texto:
+        categoria = unicodedata.category(caracter)
+        if categoria.startswith("L"):
+            letra_anterior = True
+        elif categoria.startswith("M") and letra_anterior:
+            continue
+        elif caracter in " -‐‑'’" and letra_anterior:
+            letra_anterior = False
+        else:
+            raise ErrorNegocio(
+                f"«{campo}» sólo admite letras, espacios, guiones y apóstrofes entre letras.", campo)
+    if not letra_anterior:
+        raise ErrorNegocio(f"«{campo}» debe terminar en una letra.", campo)
+    return texto
+
+
+def validar_dni(valor) -> str:
+    texto = requerir_texto(valor, "DNI")
+    if re.fullmatch(r"[0-9]{3,8}", texto) is None:
+        raise ErrorNegocio("DNI: ingrese entre 3 y 8 dígitos, sin puntos ni espacios internos.", "DNI")
+    return texto
+
+
+def validar_telefono(valor) -> str:
+    texto = validar_texto(valor, "Teléfono", 30)
+    if texto and (re.fullmatch(r"\+?[0-9 ()-]+", texto) is None
+                  or not any(c in "0123456789" for c in texto)):
+        raise ErrorNegocio(
+            "Teléfono: use números y, si corresponde, +, espacios, paréntesis o guiones.", "Teléfono")
+    return texto
+
+
+def validar_email(valor) -> str:
+    texto = validar_texto(valor, "Email", 120)
     if not texto:
-        raise ErrorNegocio(f"El campo «{campo}» es obligatorio.")
+        return texto
+    valido = texto.count("@") == 1 and not any(
+        c.isspace() or unicodedata.category(c).startswith("C") for c in texto)
+    if valido:
+        usuario, dominio = texto.split("@")
+        try:
+            etiquetas = dominio.encode("idna").decode("ascii").split(".")
+        except UnicodeError:
+            etiquetas = []
+        valido = (bool(usuario) and not usuario.startswith(".") and not usuario.endswith(".")
+                  and ".." not in usuario and not any(c in '<>()[]\\,;:"' for c in usuario)
+                  and bool(etiquetas) and all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", e)
+                                              for e in etiquetas))
+    if not valido:
+        raise ErrorNegocio("Ingrese un correo con formato usuario@dominio, sin espacios.", "Email")
     return texto
 
 

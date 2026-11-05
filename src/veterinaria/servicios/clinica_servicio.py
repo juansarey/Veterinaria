@@ -3,7 +3,7 @@
 from veterinaria.dominio.clinica.agenda_medica import AgendaMedica, DiaSemana
 import sqlite3
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 
 from veterinaria.dominio.clinica.cliente import Cliente
 from veterinaria.dominio.clinica.clinica import Clinica
@@ -17,37 +17,47 @@ from veterinaria.persistencia.cliente_dao import ClienteDAO
 from veterinaria.persistencia.clinica_dao import ClinicaDAO
 from veterinaria.persistencia.historia_clinica_dao import HistoriaClinicaDAO
 from veterinaria.persistencia.mascota_dao import MascotaDAO
+from veterinaria.persistencia.remito_biologico_dao import RemitoBiologicoDAO
 from veterinaria.persistencia.turno_dao import TurnoDAO
 from veterinaria.persistencia.veterinario_dao import VeterinarioDAO
-from veterinaria.servicios.base import ServicioBase, fmt_fecha_hora, requerir_texto
+from veterinaria.servicios.base import (
+    ServicioBase, ahora, fmt_fecha_hora, requerir_texto, validar_texto,
+    validar_nombre_persona, validar_dni, validar_telefono, validar_email,
+)
 from veterinaria.servicios.errores import ErrorNegocio
 
 
 class ClinicaServicio(ServicioBase):
     # ------------------------------------------------------------- clientes
     def crear_cliente(self, nombre, apellido, dni, telefono="", email="") -> int:
-        nombre = requerir_texto(nombre, "Nombre")
-        apellido = requerir_texto(apellido, "Apellido")
-        dni = requerir_texto(dni, "DNI")
+        nombre = validar_nombre_persona(nombre, "Nombre")
+        apellido = validar_nombre_persona(apellido, "Apellido")
+        dni = validar_dni(dni)
+        telefono, email = validar_telefono(telefono), validar_email(email)
         with self._tx() as con:
+            if any(c.dni == dni for c in ClienteDAO(con).listar()):
+                raise ErrorNegocio("Ya existe un cliente con ese DNI.", "DNI")
             id_cliente = self._siguiente_id(con, "cliente")
             ClienteDAO(con).crear(
                 Cliente(id_cliente, nombre, apellido, dni,
-                        (telefono or "").strip(), (email or "").strip())
+                        telefono, email)
             )
         return id_cliente
 
     def modificar_cliente(self, id_cliente, nombre, apellido, dni, telefono="", email=""):
+        nombre = validar_nombre_persona(nombre, "Nombre")
+        apellido = validar_nombre_persona(apellido, "Apellido")
+        dni = validar_dni(dni)
+        telefono, email = validar_telefono(telefono), validar_email(email)
         with self._tx() as con:
             dao = ClienteDAO(con)
             cliente = dao.obtener_por_id(id_cliente)
             if cliente is None:
                 raise ErrorNegocio("El cliente no existe.")
-            cliente.nombre = requerir_texto(nombre, "Nombre")
-            cliente.apellido = requerir_texto(apellido, "Apellido")
-            cliente.dni = requerir_texto(dni, "DNI")
-            cliente.telefono = (telefono or "").strip()
-            cliente.email = (email or "").strip()
+            if any(c.dni == dni and c.id_cliente != id_cliente for c in dao.listar()):
+                raise ErrorNegocio("Ya existe un cliente con ese DNI.", "DNI")
+            cliente.nombre, cliente.apellido, cliente.dni = nombre, apellido, dni
+            cliente.telefono, cliente.email = telefono, email
             dao.actualizar(cliente)
 
     def eliminar_cliente(self, id_cliente):
@@ -65,29 +75,33 @@ class ClinicaServicio(ServicioBase):
             ]
 
     # ------------------------------------------------------------- mascotas
+    @staticmethod
+    def _validar_nacimiento(fecha_nacimiento):
+        if fecha_nacimiento is None:
+            return
+        if not isinstance(fecha_nacimiento, date) or isinstance(fecha_nacimiento, datetime):
+            raise ErrorNegocio("Nacimiento: ingrese una fecha válida o deje el campo vacío.", "Nacimiento")
+        if fecha_nacimiento > ahora().date():
+            raise ErrorNegocio("La fecha de nacimiento no puede ser posterior a hoy.", "Nacimiento")
+
     def crear_mascota(self, id_cliente, nombre, especie, raza="",
                       fecha_nacimiento=None, sexo="", abrir_historia=False) -> int:
         """RN01: toda mascota necesita un responsable existente.
 
         Con ``abrir_historia=True`` se abre su historia clínica en la misma operación."""
         if id_cliente is None:
-            raise ErrorNegocio("Toda mascota debe tener un responsable (cliente).")
-        nombre = requerir_texto(nombre, "Nombre")
-        especie = requerir_texto(especie, "Especie")
+            raise ErrorNegocio("Toda mascota debe tener un responsable (cliente).", "Responsable")
+        nombre = requerir_texto(nombre, "Nombre", 80)
+        especie = requerir_texto(especie, "Especie", 50)
+        raza, sexo = validar_texto(raza, "Raza", 80), validar_texto(sexo, "Sexo", 20)
+        self._validar_nacimiento(fecha_nacimiento)
         with self._tx() as con:
             responsable = ClienteDAO(con).obtener_por_id(id_cliente)
             if responsable is None:
-                raise ErrorNegocio("El responsable seleccionado no existe.")
-            for existente in MascotaDAO(con).listar():
-                if (existente.responsable.id_cliente == id_cliente
-                        and existente.nombre.strip().lower() == nombre.lower()
-                        and existente.especie.strip().lower() == especie.lower()):
-                    raise ErrorNegocio(
-                        f"{responsable.nombre} {responsable.apellido} ya tiene registrada una mascota "
-                        f"«{nombre}» ({especie}).")
+                raise ErrorNegocio("El responsable seleccionado no existe.", "Responsable")
             id_mascota = self._siguiente_id(con, "mascota")
             mascota = Mascota(id_mascota, nombre, especie, responsable,
-                              (raza or "").strip(), fecha_nacimiento, (sexo or "").strip())
+                              raza, fecha_nacimiento, sexo)
             MascotaDAO(con).crear(mascota)
             if abrir_historia:
                 historia = HistoriaClinica(self._siguiente_id(con, "historia_clinica"),
@@ -99,14 +113,17 @@ class ClinicaServicio(ServicioBase):
     def modificar_mascota(self, id_mascota, nombre, especie, raza="",
                           fecha_nacimiento=None, sexo=""):
         """El responsable no cambia: la entidad no expone setter."""
+        nombre = requerir_texto(nombre, "Nombre", 80)
+        especie = requerir_texto(especie, "Especie", 50)
+        raza, sexo = validar_texto(raza, "Raza", 80), validar_texto(sexo, "Sexo", 20)
+        self._validar_nacimiento(fecha_nacimiento)
         with self._tx() as con:
             dao = MascotaDAO(con)
             actual = dao.obtener_por_id(id_mascota)
             if actual is None:
                 raise ErrorNegocio("La mascota no existe.")
-            nueva = Mascota(id_mascota, requerir_texto(nombre, "Nombre"),
-                            requerir_texto(especie, "Especie"), actual.responsable,
-                            (raza or "").strip(), fecha_nacimiento, (sexo or "").strip())
+            nueva = Mascota(id_mascota, nombre, especie, actual.responsable,
+                            raza, fecha_nacimiento, sexo)
             dao.actualizar(nueva)
 
     def eliminar_mascota(self, id_mascota):
@@ -144,12 +161,29 @@ class ClinicaServicio(ServicioBase):
 
     # ------------------------------------------------------------- clínicas
     def crear_clinica(self, nombre, direccion, telefono="") -> int:
-        nombre = requerir_texto(nombre, "Nombre")
-        direccion = requerir_texto(direccion, "Dirección")
+        nombre = requerir_texto(nombre, "Nombre", 100)
+        direccion = requerir_texto(direccion, "Dirección", 200)
+        telefono = validar_telefono(telefono)
         with self._tx() as con:
             id_clinica = self._siguiente_id(con, "clinica")
-            ClinicaDAO(con).crear(Clinica(id_clinica, nombre, direccion, (telefono or "").strip()))
+            ClinicaDAO(con).crear(Clinica(id_clinica, nombre, direccion, telefono))
         return id_clinica
+
+    def eliminar_clinica(self, id_clinica):
+        with self._tx() as con:
+            # _tx confirma/revierte; BEGIN incluye las lecturas previas al DELETE.
+            if not con.in_transaction:
+                con.execute("BEGIN").close()
+            dao = ClinicaDAO(con)
+            if dao.obtener_por_id(id_clinica) is None:
+                raise ErrorNegocio("La clínica no existe.")
+            if VeterinarioDAO(con).listar_por_clinica(id_clinica):
+                raise ErrorNegocio("La clínica tiene veterinarios asociados y no puede eliminarse.")
+            if RemitoBiologicoDAO(con).existe_por_clinica(id_clinica):
+                raise ErrorNegocio("La clínica tiene remitos biológicos registrados y no puede eliminarse, "
+                                   "aunque ya estén recibidos. Se conserva su historial de laboratorio.")
+            if not dao.eliminar(id_clinica):
+                raise ErrorNegocio("No se pudo eliminar la clínica.")
 
     def listar_clinicas(self) -> list[dict]:
         with self._lectura() as con:
@@ -162,19 +196,42 @@ class ClinicaServicio(ServicioBase):
     # ---------------------------------------------------------- veterinarios
     def crear_veterinario(self, id_clinica, nombre, apellido, matricula, especialidad="") -> int:
         if id_clinica is None:
-            raise ErrorNegocio("Seleccione la clínica del veterinario.")
-        nombre = requerir_texto(nombre, "Nombre")
-        apellido = requerir_texto(apellido, "Apellido")
-        matricula = requerir_texto(matricula, "Matrícula")
+            raise ErrorNegocio("Seleccione la clínica del veterinario.", "Clínica")
+        nombre = validar_nombre_persona(nombre, "Nombre")
+        apellido = validar_nombre_persona(apellido, "Apellido")
+        matricula = requerir_texto(matricula, "Matrícula", 30)
+        especialidad = validar_texto(especialidad, "Especialidad", 100)
         with self._tx() as con:
             clinica = ClinicaDAO(con).obtener_por_id(id_clinica)
             if clinica is None:
-                raise ErrorNegocio("La clínica seleccionada no existe.")
+                raise ErrorNegocio("La clínica seleccionada no existe.", "Clínica")
+            if any(v.matricula == matricula for v in VeterinarioDAO(con).listar()):
+                raise ErrorNegocio("Ya existe un veterinario con esa matrícula.", "Matrícula")
             id_vet = self._siguiente_id(con, "veterinario")
-            vet = Veterinario(id_vet, nombre, apellido, matricula, (especialidad or "").strip())
+            vet = Veterinario(id_vet, nombre, apellido, matricula, especialidad)
             clinica.agregar_veterinario(vet)
             VeterinarioDAO(con).crear(vet, id_clinica)
         return id_vet
+
+    def eliminar_veterinario(self, id_veterinario):
+        with self._tx() as con:
+            if not con.in_transaction:
+                con.execute("BEGIN").close()
+            dao = VeterinarioDAO(con)
+            if dao.obtener_por_id(id_veterinario) is None:
+                raise ErrorNegocio("El veterinario no existe.")
+            if TurnoDAO(con).listar_por_veterinario(id_veterinario):
+                raise ErrorNegocio("El veterinario tiene turnos registrados y no puede eliminarse, "
+                                   "incluidos los cancelados o atendidos.")
+            if AtencionDAO(con).existe_por_veterinario(id_veterinario):
+                raise ErrorNegocio("El veterinario tiene atenciones clínicas registradas y no puede "
+                                   "eliminarse. Se conserva su historial clínico.")
+            agenda_dao = AgendaMedicaDAO(con)
+            if agenda_dao.obtener_por_veterinario(id_veterinario) is not None:
+                if not agenda_dao.eliminar_por_veterinario(id_veterinario):
+                    raise ErrorNegocio("No se pudo eliminar la agenda del veterinario.")
+            if not dao.eliminar(id_veterinario):
+                raise ErrorNegocio("No se pudo eliminar el veterinario.")
 
     def listar_veterinarios(self) -> list[dict]:
         with self._lectura() as con:
@@ -215,6 +272,16 @@ class ClinicaServicio(ServicioBase):
     # ---------------------------------------------------------------- turnos
     def agendar_turno(self, id_veterinario, id_mascota, inicio, fin, motivo="") -> int:
         """RN02/RN03: dentro de la agenda y sin superposición con turnos activos."""
+        motivo = validar_texto(motivo, "Motivo", 200)
+        if not isinstance(inicio, datetime) or inicio.tzinfo is not None:
+            raise ErrorNegocio("Ingrese una fecha y hora de inicio locales válidas.", "Fecha")
+        if not isinstance(fin, datetime) or fin.tzinfo is not None:
+            raise ErrorNegocio("Ingrese una fecha y hora de finalización locales válidas.", "Hora")
+        referencia = ahora().replace(second=0, microsecond=0)
+        if inicio.date() < referencia.date():
+            raise ErrorNegocio("No puede reservar un turno en una fecha pasada.", "Fecha")
+        if inicio < referencia:
+            raise ErrorNegocio("La hora elegida ya pasó.", "Hora")
         with self._tx() as con:
             vet = VeterinarioDAO(con).obtener_por_id(id_veterinario)
             if vet is None:
@@ -225,11 +292,13 @@ class ClinicaServicio(ServicioBase):
             agenda = AgendaMedicaDAO(con).obtener_por_veterinario(id_veterinario)
             existentes = TurnoDAO(con).listar_por_veterinario(id_veterinario)
 
-            nuevo = Turno(self._siguiente_id(con, "turno"), inicio, fin, mascota,
-                          (motivo or "").strip())
+            try:
+                nuevo = Turno(self._siguiente_id(con, "turno"), inicio, fin, mascota, motivo)
+            except ValueError as error:
+                raise ErrorNegocio(str(error), "Hora") from error
             motivo_rechazo = self._motivo_rechazo(agenda, existentes, nuevo)
             if motivo_rechazo:
-                raise ErrorNegocio(motivo_rechazo)
+                raise ErrorNegocio(motivo_rechazo, "Hora")
 
             vet.asignar_agenda(agenda)
             for turno in existentes:           # reconstruye el estado en memoria

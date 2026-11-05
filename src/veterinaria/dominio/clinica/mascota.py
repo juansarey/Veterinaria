@@ -77,9 +77,4 @@ class Mascota:
         if self._historia_clinica is None:
             return False
 
-        fecha_referencia = atencion.fecha_hora.date()
-
-        if not self.vacunas_obligatorias_al_dia(vacunas, fecha_referencia):
-            return False
-
         return self._historia_clinica._agregar_atencion(atencion)

@@ -5,6 +5,7 @@ Este módulo sólo conoce Flet y ``ErrorNegocio``; no contiene reglas de negocio
 
 import re
 from datetime import date, datetime, time
+from threading import Lock
 
 import flet as ft
 
@@ -38,7 +39,7 @@ def _parsear(texto, formato, campo, ejemplo):
     try:
         return datetime.strptime((texto or "").strip(), formato)
     except ValueError:
-        raise ErrorNegocio(f"«{campo}» no tiene un formato válido (ejemplo: {ejemplo}).") from None
+        raise ErrorNegocio(f"«{campo}» no tiene un formato válido (ejemplo: {ejemplo}).", campo) from None
 
 
 def leer_fecha(texto, campo="Fecha") -> date:
@@ -76,8 +77,66 @@ def ahora() -> str:
 
 
 # ----------------------------------------------------------------- controles
-def campo(etiqueta, ancho=220, valor="", **opciones) -> ft.TextField:
-    return ft.TextField(label=etiqueta, value=valor, width=ancho, dense=True, **opciones)
+def campo(etiqueta, ancho=220, valor="", validar=None, **opciones) -> ft.TextField:
+    al_cambiar = opciones.pop("on_change", None)
+    al_salir = opciones.pop("on_blur", None)
+    control = ft.TextField(label=etiqueta, value=valor, width=ancho, dense=True, **opciones)
+    control._validar_entrada = validar
+
+    def cambiar(e):
+        revisar_error(control)
+        if al_cambiar:
+            al_cambiar(e)
+
+    control.on_change = cambiar
+    def salir(e):
+        revisar_error(control)
+        if al_salir:
+            al_salir(e)
+    control.on_blur = salir
+    return control
+
+
+def establecer_error(control, mensaje):
+    # Flet 1.x llama «error» a la propiedad de TextField y «error_text» a la de Dropdown.
+    if isinstance(control, ft.TextField):
+        control.error = mensaje
+    else:
+        control.error_text = mensaje
+    control._valor_error = control.value if mensaje else None
+
+
+def revisar_error(control):
+    """Revalida sólo un error previo y una entrada modificada; nunca bloquea la escritura."""
+    error = control.error if isinstance(control, ft.TextField) else control.error_text
+    validar = getattr(control, "_validar_entrada", None)
+    if not error or validar is None or control.value == getattr(control, "_valor_error", None):
+        return
+    try:
+        validar(control.value)
+    except ErrorNegocio as exc:
+        establecer_error(control, str(exc))
+        _actualizar_control(control)
+    else:
+        limpiar_error(control)
+
+
+def limpiar_error(control):
+    error = control.error if isinstance(control, ft.TextField) else control.error_text
+    if error:
+        establecer_error(control, None)
+        _actualizar_control(control)
+
+
+def enfocar_control(page, control):
+    """Flet 1.x solicita foco mediante una corrutina; una página simulada puede omitirlo."""
+    ejecutar = getattr(page, "run_task", None)
+    foco = getattr(control, "focus", None)
+    if ejecutar and foco:
+        try:
+            ejecutar(foco)
+        except (RuntimeError, AssertionError):
+            pass  # una página aún sin sesión no puede recibir foco
 
 
 _SEPARADORES = {2: "/", 4: "/", 8: " ", 10: ":"}
@@ -116,25 +175,36 @@ def _valor_o_ahora(texto: str, formato: str) -> datetime:
         return datetime.now().replace(second=0, microsecond=0)
 
 
-def abrir_calendario(e, control: ft.TextField, con_hora: bool):
+def abrir_calendario(e, control: ft.TextField, con_hora: bool,
+                     fecha_minima=None, fecha_maxima=None, on_change=None):
     """Abre el calendario desplegable y escribe la fecha elegida en el campo
     (conserva la hora si el campo es de fecha y hora)."""
     formato = FMT_FECHA_HORA if con_hora else FMT_FECHA
     actual = _valor_o_ahora(control.value, formato)
+    desde = fecha_minima() if callable(fecha_minima) else fecha_minima
+    hasta = fecha_maxima() if callable(fecha_maxima) else fecha_maxima
+    desde = desde or date(1990, 1, 1)
+    hasta = hasta or date(2100, 12, 31)
+    desde = datetime(desde.year, desde.month, desde.day)
+    hasta = datetime(hasta.year, hasta.month, hasta.day)
+    inicial = max(desde, min(hasta, datetime(actual.year, actual.month, actual.day)))
 
     def al_elegir(ev):
         elegida = ev.control.value
         nuevo = actual.replace(year=elegida.year, month=elegida.month, day=elegida.day)
         control.value = control.data = nuevo.strftime(formato)
+        revisar_error(control)
         _actualizar_control(control)
+        if on_change:
+            on_change(ev)
 
     e.page.show_dialog(ft.DatePicker(
-        value=actual, first_date=datetime(1990, 1, 1), last_date=datetime(2100, 12, 31),
+        value=inicial, first_date=desde, last_date=hasta,
         locale=LOCALE, help_text="Seleccionar fecha", cancel_text="Cancelar",
         confirm_text="Aceptar", on_change=al_elegir))
 
 
-def abrir_reloj(e, control: ft.TextField, con_fecha: bool):
+def abrir_reloj(e, control: ft.TextField, con_fecha: bool, on_change=None):
     """Abre el selector de hora y escribe la hora elegida (HH:MM) en el campo."""
     formato = FMT_FECHA_HORA if con_fecha else FMT_HORA
     actual = _valor_o_ahora(control.value, formato)
@@ -143,7 +213,10 @@ def abrir_reloj(e, control: ft.TextField, con_fecha: bool):
         hora = ev.control.value
         nuevo = actual.replace(hour=hora.hour, minute=hora.minute)
         control.value = control.data = nuevo.strftime(formato)
+        revisar_error(control)
         _actualizar_control(control)
+        if on_change:
+            on_change(ev)
 
     e.page.show_dialog(ft.TimePicker(
         value=actual.time(), locale=LOCALE, help_text="Seleccionar hora", cancel_text="Cancelar",
@@ -157,7 +230,8 @@ def _boton_pequeno(icono, tooltip, on_click) -> ft.IconButton:
 
 
 def campo_fecha(etiqueta="Fecha", ancho=170, valor: date | datetime | None = None,
-                con_hora=False, **opciones) -> ft.TextField:
+                con_hora=False, fecha_minima=None, fecha_maxima=None, on_change=None,
+                opcional=False, **opciones) -> ft.TextField:
     """Campo de fecha (o fecha y hora) con máscara y calendario desplegable.
 
     ``valor``: date/datetime o None. En los campos con hora hay además un reloj para elegir la hora."""
@@ -166,12 +240,24 @@ def campo_fecha(etiqueta="Fecha", ancho=170, valor: date | datetime | None = Non
     ancho = max(ancho, 250 if con_hora else 175)
     control = campo(etiqueta, ancho, texto, input_filter=ft.InputFilter(regex_string=r"[0-9/: ]"),
                     hint_text="DD/MM/AAAA HH:MM" if con_hora else "DD/MM/AAAA", **opciones)
+
+    def validar_fecha(texto):
+        if opcional and not (texto or "").strip():
+            return
+        elegida = (leer_fecha_hora(texto, etiqueta).date() if con_hora else leer_fecha(texto, etiqueta))
+        desde = fecha_minima() if callable(fecha_minima) else fecha_minima
+        hasta = fecha_maxima() if callable(fecha_maxima) else fecha_maxima
+        if (desde and elegida < desde) or (hasta and elegida > hasta):
+            raise ErrorNegocio("La fecha está fuera del rango permitido para este campo.", etiqueta)
+
+    control._validar_entrada = validar_fecha
     control.data = texto
     botones = [_boton_pequeno(ft.Icons.CALENDAR_MONTH, "Elegir fecha en el calendario",
-                              lambda e: abrir_calendario(e, control, con_hora))]
+                              lambda e: abrir_calendario(
+                                  e, control, con_hora, fecha_minima, fecha_maxima, on_change))]
     if con_hora:
         botones.append(_boton_pequeno(ft.Icons.ACCESS_TIME, "Elegir hora",
-                                      lambda e: abrir_reloj(e, control, True)))
+                                      lambda e: abrir_reloj(e, control, True, on_change)))
     control.suffix = ft.Row(botones, tight=True, spacing=0)
 
     def al_escribir(e):
@@ -180,39 +266,56 @@ def campo_fecha(etiqueta="Fecha", ancho=170, valor: date | datetime | None = Non
             control.value = nuevo
             control.selection = ft.TextSelection(base_offset=len(nuevo), extent_offset=len(nuevo))
         control.data = nuevo
-        control.update()
+        revisar_error(control)
+        _actualizar_control(control)
+        if on_change:
+            on_change(e)
 
     control.on_change = al_escribir
     return control
 
 
-def campo_fecha_hora(etiqueta="Fecha y hora", ancho=250) -> ft.TextField:
-    return campo_fecha(etiqueta, ancho, datetime.now(), con_hora=True)
+def campo_fecha_hora(etiqueta="Fecha y hora", ancho=250, **opciones) -> ft.TextField:
+    return campo_fecha(etiqueta, ancho, datetime.now(), con_hora=True, **opciones)
 
 
 def campo_hora(etiqueta="Hora (HH:MM)", ancho=150, valor="") -> ft.TextField:
     """Campo de hora con selector de reloj."""
     control = campo(etiqueta, ancho, valor, input_filter=ft.InputFilter(regex_string=r"[0-9:]"),
-                    hint_text="HH:MM")
+                    hint_text="HH:MM", validar=lambda texto: leer_hora(texto, etiqueta))
     control.suffix = _boton_pequeno(ft.Icons.ACCESS_TIME, "Elegir hora",
                                     lambda e: abrir_reloj(e, control, False))
     return control
 
 
 def reponer_fecha(control: ft.TextField):
-    """Vuelve a poner la fecha y hora actuales (los valores por defecto no deben quedar viejos)."""
+    """Restablece explícitamente la fecha tras guardar; no se usa al refrescar listados."""
     control.value = control.data = ahora()
+    limpiar_error(control)
 
 
 def selector(etiqueta, ancho=300, on_select=None) -> ft.Dropdown:
     """Lista desplegable con búsqueda por escritura."""
-    return ft.Dropdown(label=etiqueta, width=ancho, options=[], on_select=on_select,
-                       enable_filter=True, editable=True, menu_height=320, dense=True)
+    control = ft.Dropdown(label=etiqueta, width=ancho, options=[],
+                          enable_filter=True, editable=True, menu_height=320, dense=True)
+    control._validar_entrada = lambda valor: requerir(control, "una opción válida")
+
+    def seleccionar(e):
+        revisar_error(control)
+        if on_select:
+            on_select(e)
+
+    control.on_select = seleccionar
+    control.on_text_change = lambda e: revisar_error(control)
+    return control
 
 
 def desplegable_fijo(etiqueta, opciones: list[str], valor=None, ancho=160) -> ft.Dropdown:
-    return ft.Dropdown(label=etiqueta, width=ancho, value=valor, dense=True,
-                       options=[ft.DropdownOption(key=o, text=o) for o in opciones])
+    control = ft.Dropdown(label=etiqueta, width=ancho, value=valor, dense=True,
+                          options=[ft.DropdownOption(key=o, text=o) for o in opciones])
+    control._validar_entrada = lambda valor: opcion_de(control)
+    control.on_select = lambda e: revisar_error(control)
+    return control
 
 
 def cargar_selector(dropdown: ft.Dropdown, items: list[dict], clave="id", texto="etiqueta"):
@@ -223,23 +326,67 @@ def cargar_selector(dropdown: ft.Dropdown, items: list[dict], clave="id", texto=
 
 
 def id_de(dropdown: ft.Dropdown) -> int | None:
-    return int(dropdown.value) if dropdown.value not in (None, "") else None
+    if dropdown.value in (None, ""):
+        return None
+    try:
+        valor = int(dropdown.value)
+    except (ValueError, TypeError):
+        valor = 0
+    if valor <= 0 or str(dropdown.value) not in {opcion.key for opcion in dropdown.options}:
+        raise ErrorNegocio(f"Seleccione una opción válida en «{dropdown.label}».", dropdown.label)
+    return valor
 
 
 def requerir(dropdown: ft.Dropdown, nombre: str) -> int:
     valor = id_de(dropdown)
     if valor is None:
-        raise ErrorNegocio(f"Seleccione {nombre}.")
+        raise ErrorNegocio(f"Seleccione {nombre}.", dropdown.label)
     return valor
 
 
-def boton(texto, on_click, icono=None, primario=True) -> ft.Control:
+def opcion_de(dropdown: ft.Dropdown) -> str:
+    if dropdown.value not in {opcion.key for opcion in dropdown.options}:
+        raise ErrorNegocio(f"Seleccione una opción válida en «{dropdown.label}».", dropdown.label)
+    return dropdown.value
+
+
+def _proteger_boton(control, accion, grupo=None):
+    grupo = grupo or getattr(accion, "__self__", None)
+    bloqueo = getattr(grupo, "_bloqueo_accion", None)
+    if bloqueo is None:
+        grupo = None
+        bloqueo = Lock()
+
+    def ejecutar(e):
+        vista = grupo.vista if grupo is not None else control
+        if control.disabled or vista.disabled or not bloqueo.acquire(blocking=False):
+            return
+        anterior = vista.disabled
+        try:
+            # Deshabilitar el formulario no pisa el estado propio de cada botón.
+            vista.disabled = True
+            _actualizar_control(vista)
+            return accion(e)
+        finally:
+            vista.disabled = anterior
+            _actualizar_control(vista)
+            bloqueo.release()
+
+    control.on_click = ejecutar
+    return control
+
+
+def boton(texto, on_click, icono=None, primario=True, grupo=None, destructivo=False) -> ft.Control:
     clase = ft.FilledButton if primario else ft.OutlinedButton
-    return clase(texto, icon=icono, on_click=on_click)
+    control = clase(texto, icon=icono)
+    if destructivo:
+        control.style = ft.ButtonStyle(bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE)
+    return _proteger_boton(control, on_click, grupo)
 
 
-def boton_icono(icono, tooltip, on_click, color=COLOR, visible=True) -> ft.IconButton:
-    return ft.IconButton(icono, tooltip=tooltip, icon_color=color, on_click=on_click, visible=visible)
+def boton_icono(icono, tooltip, on_click, color=COLOR, visible=True, grupo=None) -> ft.IconButton:
+    return _proteger_boton(ft.IconButton(icono, tooltip=tooltip, icon_color=color, visible=visible),
+                           on_click, grupo)
 
 
 def chip_estado(estado) -> ft.Control:
@@ -280,27 +427,12 @@ def llenar_tabla(tabla: ft.DataTable, columnas: list[tuple[str, str]], filas: li
             celdas.append(ft.DataCell(ft.Row(acciones(fila), spacing=0, tight=True)))
         rows.append(ft.DataRow(cells=celdas))
     tabla.rows = rows
-    marco = tabla.data
-    if isinstance(marco, ft.Container) and marco.data:   # alto justo hasta el máximo; después, barra propia
-        marco.height = min(marco.data, ALTO_ENCABEZADO + ALTO_FILA * len(filas))
 
 
-ALTO_FILA = 52
-ALTO_ENCABEZADO = 66
-
-
-def contenedor_tabla(tabla: ft.DataTable, alto_max=380, expandir=False) -> ft.Control:
-    """Marco con barra de desplazamiento propia: al crecer el listado se mueve sólo la tabla
-    (no toda la pantalla). Las tablas anchas también se desplazan en horizontal.
-
-    ``expandir=True``: el marco ocupa todo el alto disponible de la pestaña (los cuadros de
-    arriba quedan fijos). Si no, mide lo justo hasta ``alto_max``."""
-    contenido = ft.Column([ft.Row([tabla], scroll=ft.ScrollMode.AUTO)],
-                          scroll=ft.ScrollMode.ALWAYS, expand=True)
-    if expandir:
-        marco = ft.Container(content=contenido, expand=True)
-    else:
-        marco = ft.Container(content=contenido, height=alto_max, data=alto_max)
+def contenedor_tabla(tabla: ft.DataTable) -> ft.Control:
+    """Todas las filas participan del scroll de la página; sólo la anchura tiene scroll propio."""
+    marco = ft.Container(content=ft.Row([tabla], scroll=ft.ScrollMode.AUTO,
+                                       vertical_alignment=ft.CrossAxisAlignment.START))
     tabla.data = marco
     return marco
 
@@ -337,10 +469,10 @@ def mitad(control: ft.Control) -> ft.Control:
     return control
 
 
-def pagina(*controles, scroll=False) -> ft.Column:
-    """Disposición estándar de una pestaña: los cuadros ocupan todo el ancho y quedan fijos;
-    el listado (``contenedor_tabla(..., expandir=True)``) ocupa el alto restante con su
-    propia barra. Con ``scroll=True`` se desplaza toda la pestaña (para las que no entran)."""
+def pagina(*controles, scroll=True) -> ft.Column:
+    """Una única columna desplazable para formularios, listados y acciones de la pestaña.
+
+    Sus hijos tienen altura natural, sin expansión vertical ni scroll vertical propio."""
     return ft.Column(list(controles), spacing=14, expand=True,
                      horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
                      scroll=ft.ScrollMode.AUTO if scroll else None)
@@ -364,14 +496,33 @@ def dialogo(app, titulo_texto, controles, ancho=620, alto=None, icono=None, colo
 
 def confirmar(app, mensaje, al_aceptar):
     """Pide confirmación antes de una acción destructiva."""
-    def aceptar(e):
-        app.page.pop_dialog()
-        al_aceptar()
+    if getattr(app, "_confirmacion_abierta", False):
+        return
+    app._confirmacion_abierta = True
+    resuelto = False
 
-    app.page.show_dialog(ft.AlertDialog(
-        title=ft.Text("Confirmar"), content=ft.Text(mensaje),
-        actions=[ft.TextButton("Cancelar", on_click=lambda e: app.page.pop_dialog()),
-                 ft.FilledButton("Eliminar", on_click=aceptar)]))
+    def resolver(aceptar=False, cerrar=True):
+        nonlocal resuelto
+        if resuelto:
+            return
+        resuelto = True
+        try:
+            if cerrar:
+                app.page.pop_dialog()
+            if aceptar:
+                al_aceptar()
+        finally:
+            app._confirmacion_abierta = False
+
+    try:
+        app.page.show_dialog(ft.AlertDialog(
+            modal=True, title=ft.Text("Confirmar"), content=ft.Text(mensaje),
+            on_dismiss=lambda e: resolver(cerrar=False),
+            actions=[ft.TextButton("Cancelar", on_click=lambda e: resolver()),
+                     boton("Eliminar", lambda e: resolver(aceptar=True), destructivo=True)]))
+    except Exception:
+        app._confirmacion_abierta = False
+        raise
 
 
 def linea_tiempo(historial: list[dict]) -> list[ft.Control]:

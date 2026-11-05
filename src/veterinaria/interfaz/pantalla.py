@@ -1,6 +1,7 @@
 """Clases base: una pantalla/pestaña y una sección con pestañas."""
 
 import traceback
+from threading import Lock
 
 import flet as ft
 
@@ -21,6 +22,7 @@ class Pantalla:
     def __init__(self, app):
         self.app = app
         self.srv = app.servicios
+        self._bloqueo_accion = Lock()
         self.vista = self.construir()
 
     def construir(self) -> ft.Control:  # pragma: no cover - lo define cada pantalla
@@ -29,22 +31,46 @@ class Pantalla:
     def refrescar(self):
         """Recarga selectores y tablas desde los servicios."""
 
-    def ejecutar(self, accion, exito: str | None = None):
+    def ejecutar(self, accion, exito: str | None = None, campos=None, mensaje_error=None):
         """Ejecuta una operación mostrando los errores como avisos, sin cerrar la aplicación."""
+        for control in (campos or {}).values():
+            c.revisar_error(control)
         try:
             resultado = accion()
         except ErrorNegocio as error:
-            self.app.error(str(error))
+            control = (campos or {}).get(error.campo)
+            if control is not None:
+                c.establecer_error(control, str(error))
+            self.app.error(mensaje_error or str(error))
             self.app.actualizar()
+            if control is not None:
+                c.enfocar_control(self.app.page, control)
             return None
-        except Exception as error:      # error inesperado: se informa y la aplicación sigue
+        except OSError:
             traceback.print_exc()
-            self.app.error(f"Error inesperado: {error}")
+            self.app.error(mensaje_error or "No se pudo completar la operación. Revise los permisos y la ubicación "
+                           "del archivo y vuelva a intentar.")
             self.app.actualizar()
             return None
-        self.refrescar()
+        except Exception:      # el detalle técnico queda en consola
+            traceback.print_exc()
+            self.app.error(mensaje_error or "No se pudo completar esta acción. Vuelva a intentar; "
+                           "si el problema continúa, consulte el diagnóstico de la aplicación.")
+            self.app.actualizar()
+            return None
+        for control in (campos or {}).values():
+            c.establecer_error(control, None)
+        actualizado = True
+        try:
+            self.refrescar()
+        except Exception:
+            traceback.print_exc()
+            actualizado = False
         if exito:
             self.app.ok(exito)
+        if not actualizado:
+            self.app.error("La operación se completó, pero no se pudo actualizar la vista. "
+                           "Vuelva a abrir esta sección; no repita el registro.")
         self.app.actualizar()
         return True if resultado is None else resultado
 

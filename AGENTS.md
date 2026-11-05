@@ -679,6 +679,58 @@ El dominio, los patrones, los reportes, la persistencia, la capa de servicios y 
 Flet están implementados. La interfaz sólo invoca a `servicios/`: no contiene SQL ni reglas
 de negocio.
 
+La Etapa 1 de validaciones generales comprueba entradas en servicios y presenta errores junto
+a los campos en Flet. El DNI conserva su tipo cadena y sus ceros iniciales (3 a 8 dígitos ASCII).
+Se permiten mascotas del mismo responsable con nombre y especie coincidentes: su identidad
+es `id_mascota`, y las etiquetas ambiguas conservan el sufijo `[#ID]`. No se reescriben registros
+históricos. La Etapa 2 valida en servicios que el nacimiento no sea futuro y que las nuevas
+reservas no sean anteriores al minuto actual del reloj local, sin restringir la consulta ni la
+reconstrucción histórica. Flet conserva fechas al refrescar; sólo restablece al momento actual la
+fecha de una operación clínica o de laboratorio guardada correctamente. Reservas, filtros y
+vacunación conservan su selección. Los límites de calendario dependen del propósito del campo.
+La Etapa 3 incorpora bajas físicas restringidas de veterinarios y clínicas: cualquier turno
+o atención impide borrar un veterinario; únicamente su agenda y sus días pueden eliminarse
+junto a él, dentro de una transacción. Cualquier veterinario o remito impide borrar una clínica.
+Se conservan las FK y los métodos de borrado DAO; sólo se añaden consultas booleanas de
+dependencias. Flet confirma una sola vez y actualiza selectores sin reiniciar otros formularios.
+No se modifican dominio, esquema SQLite, State, Strategy, DER o UML ni se incorporan cascadas.
+
+La Etapa 4 exige una selección explícita de precinto en recepción (sin valor predeterminado),
+conservada ante errores y reiniciada sólo tras éxito. Los seis campos clínicos de diagnóstico y
+observaciones son multilínea sin límite de contenido por altura. La interfaz revalida errores de
+entradas modificadas con los validadores existentes y no los borra sólo por reintentar. Los botones
+protegen el manejador completo con un bloqueo por pestaña y deshabilitan su vista, liberándola en
+finally sin alterar la disponibilidad propia de las acciones. Si falla el PDF de un resultado ya
+guardado, se informa su persistencia y la opción de reemisión. Servicios, DAO y transacciones no
+cambian. Las pruebas simuladas no sustituyen la revisión manual visual integral, que queda pendiente.
+
+La política de vacunación obligatoria es informativa: las vacunas pendientes no impiden registrar
+CONSULTA, CONTROL ni URGENCIA. Se conserva la exigencia de historia clínica y la protección contra
+agregar la misma instancia de atención dos veces. Flet consulta pendientes por servicio según la
+fecha seleccionada, los muestra en una advertencia explícita y permite guardar; no duplica el
+cálculo ni utiliza la fecha actual para evaluar atenciones históricas. Se conservan las reglas de
+vigencia, aplicaciones y próximas dosis, sin crear aplicaciones ni anotaciones clínicas automáticas.
+La atención conserva su transacción y persistencia. El cambio autorizado modifica únicamente esta
+condición del dominio, su rechazo en el servicio y la presentación del aviso; la nota del UML y su
+SVG reflejan esa política, sin nuevas clases, relaciones, tablas o columnas.
+
+El contenido de cada pestaña tiene un único desplazamiento vertical en su columna principal.
+Formularios, muestras, botones y todas las filas de tablas participan del mismo flujo, sin alturas
+fijas ni scroll vertical propio en listados. Las tablas conservan su scroll horizontal. Se mantiene
+la altura acotada de la vista de pestañas y se evitan hijos con expansión vertical dentro del flujo
+desplazable. La barra lateral y la navegación de pestañas siguen fijas. Se conservan valores y
+selecciones al refrescar, incluso cuando todas las muestras están desmarcadas. La rueda y la
+distribución real siguen requiriendo prueba manual; las pruebas simuladas verifican la jerarquía.
+
+Los nuevos acontecimientos de laboratorio no admiten fechas posteriores al minuto actual del reloj
+local existente. La validación definitiva se realiza en LaboratorioServicio antes de escribir, en
+los puntos de entrada individuales y combinados de emisión, extracción, empaquetado, despacho,
+llegada, recepción y resultado. Se conserva la fecha recibida, la cronología de cada transición y
+el rollback actual. Flet limita los calendarios operativos a hoy y asocia el error con el campo sin
+perder valores. No se aplica esta restricción a turnos, próximas dosis, referencias de reportes ni
+lecturas históricas. Las cadenas existentes con fechas futuras no se modifican automáticamente.
+No se modifican dominio, DAO, esquema SQLite, State, Strategy, DER ni UML por esta validación.
+
 ---
 
 ## 17. Flujo de trabajo con Git

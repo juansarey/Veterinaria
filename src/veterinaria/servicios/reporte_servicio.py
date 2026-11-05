@@ -103,7 +103,7 @@ class ReporteServicio(ServicioBase):
                 MascotaDAO(con).listar(cargar_aplicaciones=True), VacunaDAO(con).listar(), ref))
         return {
             "titulo": f"Vacunas obligatorias pendientes al {ref.strftime('%d/%m/%Y')}",
-            "columnas": [("mascota", "Mascota"), ("especie", "Especie"),
+            "columnas": [("id_mascota", "ID mascota"), ("mascota", "Mascota"), ("especie", "Especie"),
                          ("responsable", "Responsable"), ("vacuna", "Vacuna pendiente")],
             "filas": filas,
             "grafico": grafico("Mascotas con cada vacuna pendiente", "Mascotas",

@@ -24,8 +24,8 @@ from veterinaria.servicios.errores import ErrorNegocio
 class AtencionServicio(ServicioBase):
     # --------------------------------------------------------------- vacunas
     def crear_vacuna(self, nombre, especie, obligatoria: bool) -> int:
-        nombre = requerir_texto(nombre, "Nombre")
-        especie = requerir_texto(especie, "Especie")
+        nombre = requerir_texto(nombre, "Nombre", 100)
+        especie = requerir_texto(especie, "Especie", 50)
         with self._tx() as con:
             id_vacuna = self._siguiente_id(con, "vacuna")
             VacunaDAO(con).crear(Vacuna(id_vacuna, nombre, especie, bool(obligatoria)))
@@ -45,11 +45,13 @@ class AtencionServicio(ServicioBase):
         with self._tx() as con:
             mascota = MascotaDAO(con).obtener_por_id(id_mascota)
             vacuna = VacunaDAO(con).obtener_por_id(id_vacuna)
-            if mascota is None or vacuna is None:
-                raise ErrorNegocio("La mascota o la vacuna no existen.")
+            if mascota is None:
+                raise ErrorNegocio("La mascota no existe.", "Mascota")
+            if vacuna is None:
+                raise ErrorNegocio("La vacuna no existe.", "Vacuna")
             if vacuna.especie != mascota.especie:
                 raise ErrorNegocio(f"La vacuna {vacuna.nombre} es para {vacuna.especie} "
-                                   f"y {mascota.nombre} es {mascota.especie}.")
+                                   f"y {mascota.nombre} es {mascota.especie}.", "Vacuna")
             id_aplicacion = self._siguiente_id(con, "aplicacion_vacuna")
             aplicacion = AplicacionVacuna(id_aplicacion, vacuna, fecha_aplicacion,
                                           fecha_proxima_dosis)
@@ -120,8 +122,8 @@ class AtencionServicio(ServicioBase):
     # ------------------------------------------------------------- atenciones
     def registrar_atencion(self, id_mascota, id_veterinario, fecha_hora: datetime,
                            tipo: TipoAtencion, motivo, diagnostico="", observaciones="") -> int:
-        """Registra la atención sólo con historia abierta y vacunas obligatorias al día."""
-        motivo = requerir_texto(motivo, "Motivo")
+        """Registra con historia abierta, aunque existan vacunas obligatorias pendientes."""
+        motivo = requerir_texto(motivo, "Motivo", 200)
         with self._tx() as con:
             mascota = self._mascota_con_aplicaciones(con, id_mascota)
             historia = HistoriaClinicaDAO(con).obtener_por_mascota(id_mascota)
@@ -136,10 +138,6 @@ class AtencionServicio(ServicioBase):
                                 vet, (diagnostico or "").strip(), (observaciones or "").strip())
             vacunas = VacunaDAO(con).listar()
             if not mascota.registrar_atencion(atencion, vacunas):
-                pendientes = mascota.obtener_vacunas_pendientes(vacunas, fecha_hora.date())
-                if pendientes:
-                    nombres = ", ".join(v.nombre for v in pendientes)
-                    raise ErrorNegocio(f"Vacunas obligatorias pendientes: {nombres}.")
                 raise ErrorNegocio("No se pudo registrar la atención.")
             AtencionDAO(con).crear(atencion, historia.id_historia)
             return atencion.id_atencion

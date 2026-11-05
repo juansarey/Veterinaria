@@ -5,12 +5,13 @@ from pathlib import Path
 
 import flet as ft
 
+from veterinaria.interfaz import componentes as c
 from veterinaria.interfaz.componentes import COLOR
-from veterinaria.interfaz.seccion_atencion import SeccionAtencion
-from veterinaria.interfaz.seccion_laboratorio import SeccionLaboratorio
+from veterinaria.interfaz.seccion_atencion import PestanaAtenciones, SeccionAtencion
+from veterinaria.interfaz.seccion_laboratorio import PestanaEmpaquetado, SeccionLaboratorio
 from veterinaria.interfaz.seccion_personas import SeccionPersonas
 from veterinaria.interfaz.seccion_reportes import SeccionReportes
-from veterinaria.interfaz.seccion_turnos import SeccionTurnos
+from veterinaria.interfaz.seccion_turnos import PestanaAgenda, SeccionTurnos
 
 SECCIONES = [SeccionPersonas, SeccionTurnos, SeccionAtencion, SeccionLaboratorio, SeccionReportes]
 
@@ -58,6 +59,22 @@ class AplicacionVeterinaria:
         self.actualizar()
 
     # ------------------------------------------------------------- utilidades
+    def refrescar_selectores_profesionales(self):
+        """Actualiza sólo las opciones afectadas por una baja, sin reiniciar formularios."""
+        vets = self.servicios.clinica.listar_veterinarios()
+        clinicas = self.servicios.clinica.listar_clinicas()
+        for seccion in self.pantallas:
+            for hija in getattr(seccion, "hijas", []):
+                if isinstance(hija, PestanaAgenda):
+                    c.cargar_selector(hija.vet, vets)
+                    c.cargar_selector(hija.filtro_vet, vets)
+                    hija._tabla()
+                elif isinstance(hija, PestanaAtenciones):
+                    c.cargar_selector(hija.vet, vets)
+                elif isinstance(hija, PestanaEmpaquetado):
+                    c.cargar_selector(hija.clinica, clinicas)
+        self.actualizar()
+
     def actualizar(self):
         self.page.update()
 
@@ -65,11 +82,11 @@ class AplicacionVeterinaria:
         self._aviso(mensaje, ft.Colors.GREEN_700)
 
     def error(self, mensaje: str):
-        self._aviso(mensaje, ft.Colors.RED_700)
+        self._aviso(mensaje, ft.Colors.RED_700, duracion=10000)
 
-    def _aviso(self, mensaje: str, color):
+    def _aviso(self, mensaje: str, color, duracion=4500):
         self.page.show_dialog(ft.SnackBar(ft.Text(mensaje, color=ft.Colors.WHITE), bgcolor=color,
-                                          duration=4500))
+                                          duration=duracion, show_close_icon=True))
 
     def abrir_archivo(self, ruta):
         """Abre un PDF/CSV exportado con el programa predeterminado."""

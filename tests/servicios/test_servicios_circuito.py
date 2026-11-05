@@ -55,7 +55,8 @@ def test_mascota_sin_responsable(s):
         s.clinica.crear_mascota(999, "X", "Perro")
 
 
-def test_turnos_agenda_superposicion_y_cancelado(s, base):
+def test_turnos_agenda_superposicion_y_cancelado(s, base, monkeypatch):
+    monkeypatch.setattr("veterinaria.servicios.clinica_servicio.ahora", lambda: LUNES.replace(hour=8))
     t = lambda h, m, h2, m2: (LUNES.replace(hour=h, minute=m), LUNES.replace(hour=h2, minute=m2))
     s.clinica.agendar_turno(base["vet"], base["mas"], *t(9, 0, 9, 30))
     s.clinica.agendar_turno(base["vet"], base["mas"], *t(9, 30, 10, 0))      # consecutivo
@@ -70,18 +71,20 @@ def test_turnos_agenda_superposicion_y_cancelado(s, base):
     s.clinica.agendar_turno(base["vet"], base["mas"], *t(9, 15, 9, 30))      # libera el horario
 
 
-def test_atencion_exige_historia_y_vacunas(s, base):
+def test_atencion_exige_historia_y_controla_vacunas_sin_bloquear(s, base):
     id_cli = s.clinica.crear_cliente("Bea", "Ruiz", "30999888")
     sin_historia = s.clinica.crear_mascota(id_cli, "Michi", "Gato")
     with pytest.raises(ErrorNegocio, match="historia"):
         s.atencion.registrar_atencion(sin_historia, base["vet"], LUNES, TipoAtencion.CONSULTA, "x")
 
     id_vac = s.atencion.crear_vacuna("Antirrábica", "Perro", True)
-    with pytest.raises(ErrorNegocio, match="Antirrábica"):
-        s.atencion.registrar_atencion(base["mas"], base["vet"], LUNES, TipoAtencion.CONSULTA, "x")
+    primera = s.atencion.registrar_atencion(base["mas"], base["vet"], LUNES, TipoAtencion.CONSULTA, "x")
+    assert primera and s.atencion.vacunas_pendientes(base["mas"], LUNES.date()) == ["Antirrábica"]
+    assert s.atencion.listar_aplicaciones(base["mas"]) == []
     s.atencion.registrar_aplicacion(base["mas"], id_vac, date(2026, 10, 1), date(2027, 10, 1))
     assert s.atencion.vacunas_pendientes(base["mas"], date(2026, 11, 2)) == []
     s.atencion.registrar_atencion(base["mas"], base["vet"], LUNES, TipoAtencion.CONSULTA, "ok")
+    assert len(s.atencion.listar_atenciones(base["mas"])) == 2
 
 
 def test_circuito_precinto_intacto(s, base, tmp_path):
@@ -268,20 +271,22 @@ def test_datos_demo(tmp_path):
     reportes = s.reportes.todos()
     assert len(reportes["rechazadas"]["filas"]) == 2 and reportes["vacunas"]["filas"]
     assert reportes["tiempos"]["filas"][0]["cantidad"] >= 1
-    with pytest.raises(ErrorNegocio, match="pendientes"):        # Toby tiene vacunas pendientes
-        toby = next(m for m in s.clinica.listar_mascotas() if m["nombre"] == "Toby")["id"]
-        vet = s.clinica.listar_veterinarios()[0]["id"]
-        s.atencion.registrar_atencion(toby, vet, datetime.now(), TipoAtencion.CONSULTA, "x")
+    toby = next(m for m in s.clinica.listar_mascotas() if m["nombre"] == "Toby")["id"]
+    vet = s.clinica.listar_veterinarios()[0]["id"]
+    referencia = datetime.now()
+    assert s.atencion.vacunas_pendientes(toby, referencia.date())
+    nueva = s.atencion.registrar_atencion(toby, vet, referencia, TipoAtencion.CONSULTA, "x")
+    assert any(a["id"] == nueva for a in s.atencion.listar_atenciones(toby))
 
 
 # ----------------------------------------------- duplicados, bajas y comprobante de resultados
 def test_mascota_duplicada_y_etiquetas_unicas(s, base):
-    with pytest.raises(ErrorNegocio, match="ya tiene registrada"):
-        s.clinica.crear_mascota(base["cli"], " firulais ", "perro")
+    segunda = s.clinica.crear_mascota(base["cli"], "Firulais", "Perro")
+    assert segunda != base["mas"]
     otro = s.clinica.crear_cliente("Raúl", "Pérez", "30777666")          # mismo apellido
     s.clinica.crear_mascota(otro, "Firulais", "Perro")
     etiquetas = [m["etiqueta"] for m in s.clinica.listar_mascotas()]
-    assert len(set(etiquetas)) == 2 and all("[#" in e for e in etiquetas)
+    assert len(set(etiquetas)) == 3 and all("[#" in e for e in etiquetas)
 
 
 def test_baja_de_mascota_con_historia_vacia_y_con_atenciones(s, base):
@@ -322,7 +327,7 @@ def test_no_se_aplica_una_vacuna_de_otra_especie(s, base):
 
 def test_reportes_traen_datos_para_el_grafico(s, base):
     _, _, id_mu = _atencion_con_orden(s, base)
-    s.atencion.crear_vacuna("Antirrábica", "Perro", True)   # después de la atención: si no, la bloquea
+    s.atencion.crear_vacuna("Antirrábica", "Perro", True)   # el reporte detecta el requisito del catálogo
     _, id_e = _despachado(s, base, id_mu, romper=True)
     s.laboratorio.registrar_recepcion(id_e, LUNES + timedelta(hours=3))
     reportes = s.reportes.todos(date(2026, 11, 2))
